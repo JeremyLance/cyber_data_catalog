@@ -1,0 +1,51 @@
+technique,tactic,technique_name,source
+T1078,Defense Evasion,Valid Accounts,manual_seed
+T1078.001,Defense Evasion,Valid Accounts: Default Accounts,manual_seed
+T1078.002,Defense Evasion,Valid Accounts: Domain Accounts,manual_seed
+T1078.003,Defense Evasion,Valid Accounts: Local Accounts,manual_seed
+T1078.004,Defense Evasion,Valid Accounts: Cloud Accounts,manual_seed
+T1110,Credential Access,Brute Force,manual_seed
+T1110.001,Credential Access,Brute Force: Password Guessing,manual_seed
+T1110.003,Credential Access,Brute Force: Password Spraying,manual_seed
+T1190,Initial Access,Exploit Public-Facing Application,manual_seed
+T1133,Initial Access,External Remote Services,manual_seed
+T1566,Initial Access,Phishing,manual_seed
+T1566.001,Initial Access,Phishing: Spearphishing Attachment,manual_seed
+T1566.002,Initial Access,Phishing: Spearphishing Link,manual_seed
+T1059,Execution,Command and Scripting Interpreter,manual_seed
+T1059.001,Execution,Command and Scripting Interpreter: PowerShell,manual_seed
+T1053,Execution,Scheduled Task/Job,manual_seed
+T1055,Defense Evasion,Process Injection,manual_seed
+T1027,Defense Evasion,Obfuscated Files or Information,manual_seed
+T1070,Defense Evasion,Indicator Removal,manual_seed
+T1070.001,Defense Evasion,Indicator Removal: Clear Windows Event Logs,manual_seed
+T1003,Credential Access,OS Credential Dumping,manual_seed
+T1003.001,Credential Access,OS Credential Dumping: LSASS Memory,manual_seed
+T1021,Lateral Movement,Remote Services,manual_seed
+T1021.001,Lateral Movement,Remote Services: Remote Desktop Protocol,manual_seed
+T1021.002,Lateral Movement,Remote Services: SMB/Windows Admin Shares,manual_seed
+T1071,Command and Control,Application Layer Protocol,manual_seed
+T1071.001,Command and Control,Application Layer Protocol: Web Protocols,manual_seed
+T1041,Exfiltration,Exfiltration Over C2 Channel,manual_seed
+T1486,Impact,Data Encrypted for Impact,manual_seed
+T1489,Impact,Service Stop,manual_seed
+T1490,Impact,Inhibit System Recovery,manual_seed
+T1136,Persistence,Create Account,manual_seed
+T1136.001,Persistence,Create Account: Local Account,manual_seed
+T1136.002,Persistence,Create Account: Domain Account,manual_seed
+T1098,Persistence,Account Manipulation,manual_seed
+T1098.001,Persistence,Account Manipulation: Additional Cloud Credentials,manual_seed
+T1543,Persistence,Create or Modify System Process,manual_seed
+T1543.003,Persistence,Create or Modify System Process: Windows Service,manual_seed
+T1548,Privilege Escalation,Abuse Elevation Control Mechanism,manual_seed
+T1068,Privilege Escalation,Exploitation for Privilege Escalation,manual_seed
+T1046,Discovery,Network Service Discovery,manual_seed
+T1087,Discovery,Account Discovery,manual_seed
+T1018,Discovery,Remote System Discovery,manual_seed
+T1082,Discovery,System Information Discovery,manual_seed
+T1595,Reconnaissance,Active Scanning,manual_seed
+T1589,Reconnaissance,Gather Victim Identity Information,manual_seed
+T1204,Execution,User Execution,manual_seed
+T1204.002,Execution,User Execution: Malicious File,manual_seed
+T1105,Command and Control,Ingress Tool Transfer,manual_seed
+T1567,Exfiltration,Exfiltration Over Web Service,manual_seed

@@ -1,0 +1,23 @@
+<form script="dc_setup.js" theme="dark" version="1.1">
+  <label>GitHub Contract Master Sync - Setup</label>
+  <row>
+    <panel>
+      <html>
+        <div id="dc-setup-container">
+          <p>
+            Paste the fine-grained Personal Access Token for the <b>svc-dc-catalog-bot</b>
+            GitHub account (Contents: Read-only, scoped to the optum-eis org).
+            The token is stored encrypted via Splunk's credential store and is
+            never shown again once saved. Leave blank and click Save to keep
+            the existing token unchanged.
+          </p>
+          <div id="dc-setup-status" style="margin-bottom:10px;"></div>
+          <label for="dc-github-token">GitHub Personal Access Token</label><br/>
+          <input type="password" id="dc-github-token" style="width:400px;" autocomplete="off"/>
+          <br/><br/>
+          <button id="dc-setup-save" class="btn btn-primary">Save</button>
+        </div>
+      </html>
+    </panel>
+  </row>
+</form>

@@ -1,0 +1,36 @@
+rule_order,pattern,expected_family,severity,basis
+1,(?i)infoblox:dhcp|^.*:dhcp$|\bdhcp\b,sec_dhcp,finding,Standard: DHCP logs
+2,(?i)(msad:nt6:dns|:dns$|\bdns\b|infoblox:(dns|threatprotect)|umbrella|bind9),sec_dns,finding,Standard: DNS queries/resolution and DNS security
+3,(?i)(f5:bigip:asm|:asm:|appfw|\bwaf\b|cloudflare|akamai|applicationgateway),sec_waf,finding,"Standard: WAF (F5 ASM, Netscaler AppFW, Cloudflare, Akamai)"
+4,(?i)(a10_|f5:bigip(?!:asm)|bigip:ltm|:alb|:elb|loadbalanc|netscaler(?!:appfw)),sec_loadbalancer,advisory,"Standard: load balancer (F5 LTM, A10, AWS ALB/ELB, Netscaler)"
+5,(?i)defender:advancedhunting:email|o365.*atp|proofpoint|mimecast|message_tracking|smtp,sec_email,finding,"Standard: Proofpoint, Mimecast, O365 ATP; federated model puts MDE email telemetry in sec_email"
+6,(?i)(crowdstrike|defender:advancedhunting(?!:email)|defender:adv|carbonblack|trendmicro|vision_one|prismacwp|\bedr\b),sec_edr,finding,Standard: EDR / CWP
+7,(?i)zscalerlss-zpa-auth|zpa.*auth,sec_auth,finding,ZPA authentication; Zscaler web/proxy traffic belongs in sec_proxy
+8,(?i)(zscaler(?!.*auth)|bluecoat|websense|squid|\bproxy\b),sec_proxy,finding,Standard: web proxy
+9,(?i)^(activedirectory|msad:nt6:(?!dns)|xmlwineventlog:security|windows:security),sec_auth,finding,Standard: AD authentication
+10,(?i)(okta|duo|adfs|\bldap\b|cyberark|delinea|beyondtrust|pingfed|saml|azure:monitor:aad|azuread),sec_auth,finding,"Standard: Okta, Duo, ADFS, LDAP, PAM"
+11,(?i)(^linux_secure$|snow:sys_user_login_history|cisco:ise|radius|tacacs),sec_auth,finding,Authentication and network access control
+12,(?i)(pan:|cisco:asa|fortigate|checkpoint|juniper:|nsx.*firewall|firewall),sec_firewall,finding,"Standard: firewall allow/deny, IDS/IPS"
+13,(?i)(netflow|vpcflow|vpc_flows|zeek|endace|^ixia$|packetbroker|flowlogs),sec_traffic,finding,"Standard: netflow, CSP flow logs, Endace/Zeek"
+14,(?i)(canarytools|deception|honeypot|darktrace|extrahop|vectra),sec_ndr,advisory,Nearest standard family; deception tech is not explicitly covered - ratify
+15,(?i)(cloudtrail|guardduty|^aws:(?!elb)),sec_aws,finding,"Standard: CloudTrail, GuardDuty"
+16,(?i)(mscs:azure(?!.*defender:adv)|azure:activity|azure:security),sec_azure,finding,"Standard: Azure activity, Defender for Cloud"
+17,(?i)(^gcp:|google:scc|google:gcp:(?!compute:vpc)),sec_gcp,finding,"Standard: GCP audit, Security Command Center"
+18,(?i)(o365:(?!.*atp)|google:workspace|salesforce|cloud:github),sec_saas,finding,"Standard: O365, Workspace, Salesforce audit"
+19,(?i)(prisma:cspm|cspm|dspm|aispm),sec_xspm,advisory,Standard uses a wildcard here - concrete index names not yet defined
+20,(?i)(xmlwineventlog(?!:security)|wineventlog(?!:security)|linux:auditd|^auditd|osquery),sec_os,finding,Standard: OS event logs
+21,(?i)(\biis\b|apache|nginx|weblog|a10_icac_web),sec_weblogs,advisory,Standard: web server logs
+22,(?i)(appsense|applocker|appcontrol),sec_appcontrol,finding,Standard explicitly names Appsense
+23,(?i)(teams:audit|slack),sec_messaging,finding,Standard: messaging audit
+24,(?i)(tenable|nessus|qualys|rapid7),sec_vuln,finding,Standard: vulnerability management
+25,(?i)(stix|taxii|misp|threatintel(?!.*infoblox)),sec_threatintel,finding,Standard: threat intel feeds
+26,(?i)(vmware(?!.*firewall)|citrix(?!:netscaler)|vsphere|xenapp),sec_virtualization,finding,"Standard: VMware, Citrix"
+27,(?i)\bdlp\b,sec_dlp,finding,Standard: DLP
+28,(?i)(^onguard$|badge|lenel|ccure),sec_badge,finding,Standard: badge logs (OnGuard is a Lenel physical access system)
+29,(?i)(:s3|blob|storage_access),sec_storage_access,finding,Standard: object/blob/file storage access
+30,(?i)(mssql|postgres|oracle|:rds|cloudsql|alloydb|spanner),sec_database_access,finding,Standard: database access
+31,(?i)(consul|gridgateway|grid_gateway),sec_grid_gateway,finding,Standard: gridgateway components
+32,(?i)(printer|papercut),sec_printer,finding,Standard: printer logs
+33,(?i)(^vpn|:vpn(?!.*auth)),sec_vpn,advisory,Standard lists VPN under both sec_firewall and sec_vpn - resolve the overlap
+34,(?i)(venafi|:pki|^cert),sec_cert,finding,Standard: certificate authority
+35,(?i)(apigee|kong|api:gateway),sec_api,finding,Standard: API gateway

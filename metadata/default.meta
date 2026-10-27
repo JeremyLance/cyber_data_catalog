@@ -1,0 +1,12 @@
+[]
+access = read : [ * ], write : [ admin, sc_admin, splunk_ops ]
+export = system
+
+[collections]
+export = system
+
+[transforms]
+export = system
+
+[views]
+export = system

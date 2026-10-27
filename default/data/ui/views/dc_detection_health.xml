@@ -1,0 +1,47 @@
+<dashboard theme="dark" version="1.1">
+  <label>Cyber Data Catalog - Detection Health and ATT&amp;CK Exposure</label>
+  <description>Enabled is not the same as working. Confidence = data flowing + CIM normalized + BAS validated + executing without skips.</description>
+  <row>
+    <panel><title>Detection confidence by tier</title>
+      <chart><search><query>| inputlookup dc_detection_health_lookup | lookup dc_ko_lookup ko_id OUTPUT ko_tier enabled ko_type | where enabled="yes" | chart count over ko_tier by health_state</query><earliest>-1m</earliest></search>
+        <option name="charting.chart">bar</option><option name="charting.chart.stackMode">stacked</option></chart></panel>
+    <panel><title>ATT&amp;CK coverage state</title>
+      <chart><search><query>| inputlookup dc_attack_coverage_lookup | stats count by coverage_state</query><earliest>-1m</earliest></search>
+        <option name="charting.chart">pie</option></chart></panel>
+  </row>
+  <row>
+    <panel><title>Silent Tier 0/1 detections - fired nothing in 90 days</title>
+      <table><search><query>| inputlookup dc_ko_lookup where enabled="yes" | where ko_tier="Tier 0" OR ko_tier="Tier 1" | lookup dc_detection_health_lookup ko_id OUTPUT last_fired runs_30d skip_rate_pct health_state | where runs_30d&gt;20 AND (isnull(last_fired) OR last_fired&lt;relative_time(now(),"-90d")) | eval days_silent=if(isnull(last_fired),999,round((now()-last_fired)/86400,0)) | table ko_id ko_name ko_tier owner app days_silent runs_30d skip_rate_pct health_state | sort ko_tier - days_silent</query><earliest>-1m</earliest></search><option name="count">25</option></table></panel>
+  </row>
+  <row>
+    <panel><title>Skipped executions - leading indicator of missed detections</title>
+      <table><search><query>| inputlookup dc_detection_health_lookup | lookup dc_ko_lookup ko_id OUTPUT ko_name ko_tier owner enabled | where enabled="yes" AND skip_rate_pct&gt;0 | table ko_id ko_name ko_tier owner runs_30d skipped_30d skip_rate_pct | sort - skip_rate_pct</query><earliest>-1m</earliest></search><option name="count">20</option></table></panel>
+  </row>
+  <row>
+    <panel><title>ATT&amp;CK techniques at risk from data issues</title>
+      <table><search><query>| inputlookup dc_attack_coverage_lookup | table technique detections_total detections_healthy detections_at_risk coverage_state datasets_supporting | sort coverage_state - detections_at_risk</query><earliest>-1m</earliest></search><option name="count">40</option>
+        <format type="color" field="coverage_state"><colorPalette type="map">{"NO HEALTHY COVERAGE":#DC4E41,"SINGLE POINT OF FAILURE":#F1813F,"degraded":#F8BE34,"covered":#53A051}</colorPalette></format>
+      </table></panel>
+  </row>
+  <row>
+    <panel><title>ATT&amp;CK technique detail - detections mapped to a specific technique</title>
+      <input type="dropdown" token="mitre_technique" searchWhenChanged="true">
+        <label>Technique</label>
+        <choice value="*">All techniques</choice>
+        <fieldForLabel>label</fieldForLabel>
+        <fieldForValue>technique</fieldForValue>
+        <search><query>| inputlookup dc_attack_mapping_lookup | stats count by technique, technique_name | eval label=if(technique_name!="",technique." - ".technique_name,technique) | sort technique</query></search>
+      </input>
+      <table><search><query>| inputlookup dc_attack_mapping_lookup | search technique="$mitre_technique$" | eval technique_display=if(technique_name!="",technique." - ".technique_name,technique) | table technique_display tactic sub_technique ko_id ko_name ko_type ko_tier app owner enabled health_state data_at_risk datasets_supporting source | sort ko_tier - health_state</query><earliest>-1m</earliest></search><option name="count">50</option>
+        <format type="color" field="health_state"><colorPalette type="map">{"trusted":#53A051,"acceptable":#F8BE34,"degraded":#F1813F,"NOT TRUSTWORTHY":#DC4E41}</colorPalette></format>
+        <format type="color" field="data_at_risk"><colorPalette type="map">{"yes":#DC4E41,"no":#53A051}</colorPalette></format>
+      </table></panel>
+  </row>
+  <row>
+    <panel>
+      <html>
+        <p style="margin:8px 0;">For the full ATT&amp;CK technique-by-tactic coverage matrix (production and risk-accepted detections vs. the complete ctm_mitre_lookup technique set), see the <a href="/app/cyber_data_catalog/dc_mitre_matrix">MITRE ATT&amp;CK Coverage Matrix</a> dashboard.</p>
+      </html>
+    </panel>
+  </row>
+</dashboard>

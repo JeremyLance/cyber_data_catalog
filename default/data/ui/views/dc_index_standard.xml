@@ -1,0 +1,31 @@
+<dashboard theme="dark" version="1.1">
+  <label>Cyber Data Catalog - Index Standard Conformance</label>
+  <description>Does the data actually live where the ESRO index naming standard says it should, and what does each family cost?</description>
+  <row>
+    <panel><title>Conformance findings</title>
+      <chart><search><query>| inputlookup dc_index_conformance_lookup | stats count by finding_type severity</query><earliest>-1m</earliest></search>
+        <option name="charting.chart">bar</option><option name="charting.chart.stackMode">stacked</option></chart></panel>
+    <panel><title>Ingest cost by index family</title>
+      <table><search><query>| inputlookup dc_cost_lookup where scope_type="dataset" | stats sum(gb_per_day) as gb_per_day, sum(est_annual_cost) as est_annual_cost, dc(scope_id) as datasets by index_family domain_group | eval gb_per_day=round(gb_per_day,2) | sort - est_annual_cost</query><earliest>-1m</earliest></search><option name="count">20</option></table></panel>
+  </row>
+  <row>
+    <panel><title>Misplaced data - sourcetype sits outside its standard family</title>
+      <table><search><query>| inputlookup dc_index_conformance_lookup where finding_type="misplaced_data" | lookup dc_datasets_lookup dataset_id OUTPUT ae_name declared_tier technical_owner | table severity sourcetype index index_family expected_family uhgid ae_name declared_tier events_24h basis remediation | sort severity - events_24h</query><earliest>-1m</earliest></search><option name="count">30</option>
+        <format type="color" field="severity"><colorPalette type="map">{"finding":#DC4E41,"advisory":#F8BE34}</colorPalette></format>
+      </table></panel>
+  </row>
+  <row>
+    <panel><title>Index names that do not match the standard</title>
+      <table><search><query>| inputlookup dc_index_conformance_lookup | where finding_type!="misplaced_data" | table severity finding_type index index_family uhgid events_24h remediation | sort severity finding_type</query><earliest>-1m</earliest></search><option name="count">20</option></table></panel>
+  </row>
+  <row>
+    <panel><title>Families in use</title>
+      <table><search><query>| tstats count as events where `dc_scope_indexes` earliest=-24h by index sourcetype | `dc_key` | `dc_index_family` | stats sum(events) as events_24h, dc(sourcetype) as sourcetypes, dc(uhgid) as tenants by index_family | lookup dc_index_registry index_family OUTPUT domain_group status purpose | eval status=coalesce(status,"NOT IN STANDARD") | table index_family domain_group status tenants sourcetypes events_24h purpose | sort - events_24h</query><earliest>-1m</earliest></search><option name="count">40</option></table></panel>
+    <panel><title>Approved families with no data</title>
+      <table><search><query>| inputlookup dc_index_registry | join type=left index_family [| tstats count as ev where `dc_scope_indexes` earliest=-7d by index sourcetype | `dc_key` | `dc_index_family` | stats sum(ev) as events_7d, dc(uhgid) as tenants by index_family] | fillnull value=0 events_7d tenants | eval state=if(events_7d=0,"APPROVED BUT UNUSED","in use") | table index_family domain_group scope status state tenants events_7d purpose conformance_issue | sort state index_family</query><earliest>-1m</earliest></search><option name="count">40</option></table></panel>
+  </row>
+  <row>
+    <panel><title>Byte baselines and payload shape</title>
+      <table><search><query>| inputlookup dc_volume_baselines_lookup | lookup dc_datasets_lookup dataset_id OUTPUT ae_name declared_tier sourcetype | eval median_gb_day=round(median_gb_day,3), median_bytes_per_event=round(median_bytes_per_event,0) | table dataset_id ae_name sourcetype index_family declared_tier median_gb_day mad_gb_day median_bytes_per_event mad_bytes_per_event days_sampled | sort - median_gb_day</query><earliest>-1m</earliest></search><option name="count">40</option></table></panel>
+  </row>
+</dashboard>

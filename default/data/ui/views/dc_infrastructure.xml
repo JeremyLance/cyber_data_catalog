@@ -1,0 +1,130 @@
+<dashboard theme="dark" version="1.1">
+  <label>Cyber Data Catalog - Infrastructure (HF and Edge Processor)</label>
+  <description>Heavy Forwarders and Edge Processors are the pipe, not the data. A dead Tier 0 node takes every downstream dataset dark at once - this catches that before the per-dataset alerts start cascading in. Heartbeat sources differ by node type: Heavy Forwarders are tracked via DC-90's traffic-proxy signals (per_host_thruput/tcpin_connections); Edge Processors are tracked via DC-92's OTel self-metrics (index=_metrics, metric=up/process_uptime) - validated 2026-10-21 as faster and independent of the 9997 data path (confirmed against the KSC_edge firewall case, where 443/control-plane stayed up but 9997 broke and both _internal traffic signals and _metrics went dark together). An EP node with no fresh _metrics simply stops getting a new row each cycle, so its last_heartbeat freezes and silence_minutes below ages it out on its own - no separate "down" branch needed.</description>
+  <row>
+    <panel>
+      <title>TIER 0 INFRA BREACHES - war room criteria (10-minute silence budget)</title>
+      <table>
+        <search>
+          <query>| inputlookup dc_infra_nodes_lookup where status="active" AND declared_tier="Tier 0" 
+| `dc_infra_default_silence` 
+| lookup dc_infra_observed_lookup node_id OUTPUT last_heartbeat, queue_status, max_queue_pct, connected_forwarders 
+| eval silence_minutes=if(isnull(last_heartbeat),99999,round((now()-last_heartbeat)/60,1)) 
+| eval state=case(silence_minutes&gt;max_silence_minutes,"NODE_DOWN", queue_status="backing_up" AND max_queue_pct&gt;90,"QUEUE_CRITICAL", queue_status="backing_up","QUEUE_BACKING_UP",1=1,"OK") 
+| where state="NODE_DOWN"
+| table node_id node_name node_type uhgid ae_name role state silence_minutes max_queue_pct connected_forwarders tier0_datasets_behind_node technical_owner backup_owner 
+| sort - silence_minutes</query>
+          <earliest>-1m</earliest>
+          <latest></latest>
+          <refresh>5m</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">20</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="state">
+          <colorPalette type="map">{"NODE_DOWN":#DC4E41,"QUEUE_CRITICAL":#DC4E41,"QUEUE_BACKING_UP":#F8BE34}</colorPalette>
+        </format>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Node health by type</title>
+      <chart>
+        <search>
+          <query>| inputlookup dc_infra_nodes_lookup where status="active" | `dc_infra_default_silence` | lookup dc_infra_observed_lookup node_id OUTPUT last_heartbeat | eval silence_minutes=if(isnull(last_heartbeat),99999,round((now()-last_heartbeat)/60,1)) | eval state=if(silence_minutes&gt;max_silence_minutes,"DOWN","UP") | chart count over node_type by state</query>
+          <earliest>-1m</earliest>
+          <latest></latest>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Nodes by tier and type</title>
+      <chart>
+        <search>
+          <query>| inputlookup dc_infra_nodes_lookup where status="active" | chart count over declared_tier by node_type</query>
+          <earliest>-1m</earliest>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.chart.stackMode">stacked</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Silent partial failures - up but volume collapsed vs baseline (Heavy Forwarder only - EP liveness uses DC-92 OTel metrics, not throughput)</title>
+      <table>
+        <search>
+          <query>| inputlookup dc_infra_nodes_lookup where status="active" AND node_type="Heavy Forwarder" | lookup dc_infra_observed_lookup node_id OUTPUT throughput_kbps, last_heartbeat | lookup dc_infra_baselines_lookup node_id OUTPUT median_throughput_kbps, mad_throughput_kbps | where isnotnull(median_throughput_kbps) AND mad_throughput_kbps&gt;0 | eval deviation=round((median_throughput_kbps-throughput_kbps)/mad_throughput_kbps,1) | where deviation&gt;4 AND (now()-last_heartbeat)&lt;3600 | table node_id node_name uhgid declared_tier throughput_kbps median_throughput_kbps deviation technical_owner | sort - deviation</query>
+          <earliest>-1m</earliest>
+          <latest></latest>
+        </search>
+        <option name="count">20</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Full node inventory</title>
+      <table>
+        <search>
+          <query>| inputlookup dc_infra_nodes_lookup where status="active" | lookup dc_infra_observed_lookup node_id OUTPUT last_heartbeat, uptime_status, max_queue_pct, throughput_kbps, connected_forwarders, health_score, connected_to_cloud | eval last_heartbeat=if(isnull(last_heartbeat),"never",strftime(last_heartbeat,"%Y-%m-%d %H:%M")) | table node_id node_name node_type uhgid ae_name environment role declared_tier uptime_status health_score connected_to_cloud max_queue_pct throughput_kbps connected_forwarders dataset_count tier0_datasets_behind_node technical_owner last_heartbeat | sort declared_tier node_type ae_name</query>
+          <earliest>-1m</earliest>
+        </search>
+        <option name="count">50</option>
+        <format type="color" field="uptime_status">
+          <colorPalette type="map">{"reporting":#53A051,"reporting (otel metrics)":#53A051,"unknown":#8C8C8C}</colorPalette>
+        </format>
+        <format type="color" field="connected_to_cloud">
+          <colorPalette type="map">{"yes":#53A051,"no":#DC4E41}</colorPalette>
+        </format>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Unowned nodes</title>
+      <table>
+        <search>
+          <query>| inputlookup dc_infra_nodes_lookup where status="active" | where isnull(technical_owner) OR technical_owner="" | table node_id node_name node_type uhgid ae_name declared_tier</query>
+          <earliest>-1m</earliest>
+        </search>
+        <option name="count">30</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>EP nodes awaiting ratification - auto-populated by DC-91, tier/AE not yet confirmed</title>
+      <table>
+        <search>
+          <query>| inputlookup dc_infra_nodes_lookup where status="active" AND node_type="Edge Processor" AND (declared_tier="Unassigned - review" OR match(uhgid,"^UNRESOLVED:")) | table node_id node_name uhgid ae_name declared_tier notes onboard_date | sort ae_name node_name</query>
+          <earliest>-1m</earliest>
+        </search>
+        <option name="count">50</option>
+        <format type="color" field="declared_tier">
+          <colorPalette type="map">{"Unassigned - review":#F8BE34}</colorPalette>
+        </format>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Discovered HF/EP candidates - pending review, not yet in the registry</title>
+      <table>
+        <search>
+          <query>| inputlookup dc_infra_candidates_lookup where status="pending_review" | eval first_seen=strftime(first_seen,"%Y-%m-%d"), last_seen=strftime(last_seen,"%Y-%m-%d %H:%M") | table host suspected_type confidence evidence uhgid_guess events_seen first_seen last_seen | sort suspected_type - events_seen</query>
+          <earliest>-1m</earliest>
+        </search>
+        <option name="count">40</option>
+        <format type="color" field="confidence">
+          <colorPalette type="map">{"medium":#F8BE34,"unverified - test first":#8C8C8C}</colorPalette>
+        </format>
+      </table>
+    </panel>
+  </row>
+</dashboard>

@@ -1,0 +1,29 @@
+<dashboard theme="dark" version="1.1">
+  <label>Cyber Data Catalog - Migration and Pipeline</label>
+  <description>Consolidation view: which environment each feed lives in, dual-home divergence, pipeline-level outages, and open change windows.</description>
+  <row>
+    <panel><title>Events by environment and feed status</title>
+      <chart><search><query>| inputlookup dc_feeds_lookup | lookup dc_observed_lookup feed_id OUTPUT last_seen events_24h | eval flowing=if(isnotnull(last_seen) AND (now()-last_seen)&lt;86400,1,0) | chart sum(events_24h) as events over environment by feed_status</query><earliest>-1m</earliest></search>
+        <option name="charting.chart">bar</option><option name="charting.chart.stackMode">stacked</option></chart></panel>
+    <panel><title>Pipeline health - correlated failure detection</title>
+      <table><search><query>| inputlookup dc_feeds_lookup | `dc_expected_silence` | where expected_silence="no" | lookup dc_observed_lookup feed_id OUTPUT last_seen | lookup dc_datasets_lookup dataset_id OUTPUT declared_tier | `dc_default_silence` | eval down=if(isnull(last_seen) OR (now()-last_seen)/60&gt;max_silence_minutes,1,0) | stats sum(down) as feeds_down, count as feeds_total, dc(eval(if(down=1,uhgid,null()))) as tenants_affected by pipeline, environment | eval down_pct=round(feeds_down/feeds_total*100,1) | eval verdict=case(feeds_down&gt;=3 AND down_pct&gt;=50,"PIPELINE OUTAGE",feeds_down&gt;=3,"PIPELINE DEGRADED",feeds_down&gt;0,"isolated",1=1,"healthy") | sort - feeds_down</query><earliest>-1m</earliest></search><option name="count">15</option>
+        <format type="color" field="verdict"><colorPalette type="map">{"PIPELINE OUTAGE":#DC4E41,"PIPELINE DEGRADED":#F8BE34,"isolated":#708794,"healthy":#53A051}</colorPalette></format>
+      </table></panel>
+  </row>
+  <row>
+    <panel><title>Dual-home divergence - cutover gate</title>
+      <table><search><query>| inputlookup dc_feeds_lookup where feed_status="dual_home_primary" OR feed_status="dual_home_secondary" | lookup dc_observed_lookup feed_id OUTPUT events_24h last_seen | stats values(environment) as environments, values(pipeline) as pipelines, max(events_24h) as high, min(events_24h) as low, dc(environment) as env_count by dataset_id | where env_count&gt;1 | eval divergence_pct=round((high-low)/high*100,1) | lookup dc_datasets_lookup dataset_id OUTPUT ae_name declared_tier technical_owner | eval cutover_safe=if(divergence_pct&lt;15,"YES","NO") | table dataset_id ae_name declared_tier environments pipelines high low divergence_pct cutover_safe technical_owner | sort - divergence_pct</query><earliest>-1m</earliest></search><option name="count">25</option>
+        <format type="color" field="cutover_safe"><colorPalette type="map">{"YES":#53A051,"NO":#DC4E41}</colorPalette></format>
+      </table></panel>
+  </row>
+  <row>
+    <panel><title>Pipeline hygiene - latency, parsing, truncation</title>
+      <table><search><query>| inputlookup dc_pipeline_quality_lookup | lookup dc_datasets_lookup dataset_id OUTPUT ae_name declared_tier | eval checked=strftime(checked,"%Y-%m-%d %H:%M") | table dataset_id ae_name declared_tier pipeline environment latency_p50_sec latency_p95_sec timestamp_errors_24h truncation_events_24h quality_state checked | sort - latency_p95_sec</query><earliest>-1m</earliest></search><option name="count">25</option>
+        <format type="color" field="quality_state"><colorPalette type="map">{"DEGRADED":#DC4E41,"PARSING_ERRORS":#F8BE34,"lagging":#F1813F,"ok":#53A051}</colorPalette></format>
+      </table></panel>
+  </row>
+  <row>
+    <panel><title>Change windows</title>
+      <table><search><query>| inputlookup dc_change_windows_lookup | eval state=case(now()&lt;start_time,"scheduled",now()&gt;=start_time AND now()&lt;=end_time,"ACTIVE",1=1,"closed"), duration_hours=round((end_time-start_time)/3600,1), start_time=strftime(start_time,"%Y-%m-%d %H:%M"), end_time=strftime(end_time,"%Y-%m-%d %H:%M") | table window_id state scope_type scope_value start_time end_time duration_hours change_ticket expected_effect approved_by | sort state</query><earliest>-1m</earliest></search><option name="count">20</option></table></panel>
+  </row>
+</dashboard>

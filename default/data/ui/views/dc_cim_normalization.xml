@@ -1,0 +1,22 @@
+<dashboard theme="dark" version="1.1">
+  <label>Cyber Data Catalog - CIM Normalization Quality</label>
+  <description>Data in an index that the CIM data model cannot see is invisible to every ES detection built on that model. This is the onboarding quality gate.</description>
+  <row>
+    <panel><title>Average CIM capture rate by acquired entity</title>
+      <chart><search><query>| inputlookup dc_cim_compliance_lookup | lookup dc_datasets_lookup dataset_id OUTPUT ae_name declared_tier uhgid | stats avg(capture_rate_pct) as avg_capture, count as datasets by ae_name | eval avg_capture=round(avg_capture,1) | sort avg_capture</query><earliest>-1m</earliest></search>
+        <option name="charting.chart">bar</option></chart></panel>
+    <panel><title>Compliance state by data model</title>
+      <chart><search><query>| inputlookup dc_cim_compliance_lookup | chart count over cim_datamodel by cim_state</query><earliest>-1m</earliest></search>
+        <option name="charting.chart">bar</option><option name="charting.chart.stackMode">stacked</option></chart></panel>
+  </row>
+  <row>
+    <panel><title>Worst offenders - normalization gaps blinding detections</title>
+      <table><search><query>| inputlookup dc_cim_compliance_lookup | where cim_state="NOT_NORMALIZED" OR cim_state="poor" | lookup dc_datasets_lookup dataset_id OUTPUT ae_name declared_tier | join type=left dataset_id [| inputlookup dc_dependencies_lookup where dep_type="dataset" | rename dep_value as dataset_id | lookup dc_ko_lookup ko_id OUTPUT ko_tier enabled | where enabled="yes" | stats dc(ko_id) as detections_blind, dc(eval(if(ko_tier="Tier 0",ko_id,null()))) as tier0_blind by dataset_id] | fillnull value=0 detections_blind tier0_blind | table dataset_id ae_name declared_tier cim_datamodel capture_rate_pct tier0_blind detections_blind | sort - tier0_blind - detections_blind</query><earliest>-1m</earliest></search><option name="count">20</option></table></panel>
+  </row>
+  <row>
+    <panel><title>Full CIM scorecard</title>
+      <table><search><query>| inputlookup dc_cim_compliance_lookup | lookup dc_datasets_lookup dataset_id OUTPUT ae_name declared_tier index sourcetype | eval checked=strftime(checked,"%Y-%m-%d") | table dataset_id ae_name declared_tier sourcetype cim_datamodel raw_events dm_events capture_rate_pct required_fields_total required_fields_present field_coverage_pct cim_state checked | sort capture_rate_pct</query><earliest>-1m</earliest></search><option name="count">50</option>
+        <format type="color" field="cim_state"><colorPalette type="map">{"NOT_NORMALIZED":#DC4E41,"poor":#F1813F,"partial":#F8BE34,"compliant":#53A051,"no_data":#8C8C8C}</colorPalette></format>
+      </table></panel>
+  </row>
+</dashboard>

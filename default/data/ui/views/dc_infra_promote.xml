@@ -1,0 +1,129 @@
+<form theme="dark" version="1.1">
+  <label>Cyber Data Catalog - Promote HF/EP Candidate</label>
+  <description>Reviews a DC-98 discovered candidate, then promotes it into dc_infra_nodes_lookup, logs the event to dc_lifecycle_events, and marks the candidate as promoted so it drops off the pending list. Writes to the KV Store directly - never touches the git-managed seed CSV.</description>
+
+  <fieldset submitButton="true" autoRun="false">
+    <input type="dropdown" token="candidate_id" searchWhenChanged="false">
+      <label>Candidate to promote</label>
+      <fieldForLabel>candidate_id</fieldForLabel>
+      <fieldForValue>candidate_id</fieldForValue>
+      <search><query>| inputlookup dc_infra_candidates_lookup where status="pending_review" | table candidate_id | sort candidate_id</query></search>
+    </input>
+    <input type="text" token="host">
+      <label>Host (FQDN) - copy from the reference table below</label>
+    </input>
+    <input type="text" token="node_name">
+      <label>Node name</label>
+    </input>
+    <input type="dropdown" token="node_type">
+      <label>Node type</label>
+      <choice value="heavy_forwarder">Heavy Forwarder</choice>
+      <choice value="edge_processor">Edge Processor</choice>
+    </input>
+    <input type="text" token="uhgid">
+      <label>UHGID (or "core")</label>
+    </input>
+    <input type="text" token="ae_name">
+      <label>AE Name</label>
+    </input>
+    <input type="dropdown" token="environment">
+      <label>Environment</label>
+      <default>saas2</default>
+      <choice value="saas2">saas2</choice>
+      <choice value="legacy">legacy</choice>
+    </input>
+    <input type="text" token="role">
+      <label>Role</label>
+    </input>
+    <input type="dropdown" token="declared_tier">
+      <label>Declared Tier</label>
+      <choice value="Tier 0">Tier 0</choice>
+      <choice value="Tier 1">Tier 1</choice>
+      <choice value="Tier 2">Tier 2</choice>
+      <choice value="Tier 3">Tier 3</choice>
+    </input>
+    <input type="text" token="technical_owner">
+      <label>Technical Owner</label>
+    </input>
+    <input type="text" token="backup_owner">
+      <label>Backup Owner</label>
+    </input>
+    <input type="text" token="datacenter_site">
+      <label>Datacenter / Site</label>
+    </input>
+    <input type="text" token="ha_pair_id">
+      <label>HA Pair ID (optional)</label>
+      <default></default>
+    </input>
+    <input type="text" token="notes">
+      <label>Notes</label>
+      <default></default>
+    </input>
+    <input type="text" token="change_ticket">
+      <label>Change ticket</label>
+    </input>
+    <input type="text" token="performed_by">
+      <label>Performed by (your name/ID)</label>
+    </input>
+  </fieldset>
+
+  <row>
+    <panel>
+      <title>Pending candidates - reference (copy host/evidence into the fields above)</title>
+      <table>
+        <search>
+          <query>| inputlookup dc_infra_candidates_lookup where status="pending_review" | table candidate_id host suspected_type confidence uhgid_guess possible_ae_match evidence events_seen first_seen last_seen | sort candidate_id</query>
+          <earliest>-1m</earliest>
+        </search>
+        <option name="count">50</option>
+      </table>
+    </panel>
+  </row>
+
+  <row depends="$candidate_id$">
+    <panel>
+      <title>1. Promote to registry (dc_infra_nodes)</title>
+      <table>
+        <search>
+          <query>| makeresults
+| eval node_id="$candidate_id$", node_name="$node_name$", node_type="$node_type$", uhgid="$uhgid$", ae_name="$ae_name$", environment="$environment$", role="$role$", host="$host$", declared_tier="$declared_tier$", technical_owner="$technical_owner$", backup_owner="$backup_owner$", datacenter_site="$datacenter_site$", ha_pair_id="$ha_pair_id$", status="active", lifecycle_state="onboarded", onboard_date=now(), last_reviewed=now(), notes="$notes$", dataset_count=0, tier0_datasets_behind_node=0
+| eval _key=node_id
+| table _key node_id node_name node_type uhgid ae_name environment role host declared_tier technical_owner backup_owner datacenter_site ha_pair_id status lifecycle_state onboard_date last_reviewed notes dataset_count tier0_datasets_behind_node
+| outputlookup append=t dc_infra_nodes_lookup
+| table node_id node_name node_type host declared_tier technical_owner status</query>
+          <earliest>-1m</earliest>
+        </search>
+        <option name="count">5</option>
+      </table>
+    </panel>
+    <panel>
+      <title>2. Log lifecycle event (dc_lifecycle_events)</title>
+      <table>
+        <search>
+          <query>| makeresults
+| eval event_id="evt|"."$candidate_id$"."|".now(), scope_type="infra_node", scope_value="$candidate_id$", event_type="onboarded", event_date=now(), from_state="candidate", to_state="active", ticket="$change_ticket$", performed_by="$performed_by$", notes="Promoted from DC-98 discovery. ".("$notes$")
+| eval _key=event_id
+| table _key event_id scope_type scope_value event_type event_date from_state to_state ticket performed_by notes
+| outputlookup append=t dc_lifecycle_events_lookup
+| table event_id event_type scope_value ticket performed_by</query>
+          <earliest>-1m</earliest>
+        </search>
+        <option name="count">5</option>
+      </table>
+    </panel>
+    <panel>
+      <title>3. Mark candidate as promoted (dc_infra_candidates)</title>
+      <table>
+        <search>
+          <query>| inputlookup dc_infra_candidates_lookup
+| eval status=if(candidate_id="$candidate_id$","promoted",status)
+| outputlookup dc_infra_candidates_lookup
+| where candidate_id="$candidate_id$"
+| table candidate_id host status</query>
+          <earliest>-1m</earliest>
+        </search>
+        <option name="count">5</option>
+      </table>
+    </panel>
+  </row>
+</form>

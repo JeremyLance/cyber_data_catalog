@@ -1,0 +1,3 @@
+window_id,scope_type,scope_value,start_time,end_time,change_ticket,expected_effect,suppress_alerts,requested_by,approved_by,notes
+EXAMPLE-001,uhgid,uhgid-000024,1767225600,1767312000,CHG0000000,Volume drops to zero on legacy site during cutover,yes,,,EXAMPLE ROW - epoch times. Delete before use.
+EXAMPLE-002,pipeline,Kafka OnPrem,1767225600,1767243600,CHG0000001,"Kafka broker maintenance, all feeds delayed",yes,,,EXAMPLE ROW. Delete before use.

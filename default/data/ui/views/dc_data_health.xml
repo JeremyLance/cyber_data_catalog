@@ -1,0 +1,53 @@
+<dashboard theme="dark" version="1.1">
+  <label>Cyber Data Catalog - Data Health and SLA</label>
+  <description>Contract breaches ranked by blast radius, not by alphabetical order.</description>
+  <row>
+    <panel>
+      <title>TIER 0 BREACHES - war room criteria</title>
+      <table>
+        <search><query>| inputlookup dc_datasets_lookup where status="active" | lookup dc_contracts_lookup dataset_id OUTPUT max_silence_minutes expected_events_min sla_response_minutes notify_channel | `dc_default_silence` | lookup dc_observed_lookup dataset_id OUTPUT last_seen events_24h | lookup dc_baselines_lookup dataset_id OUTPUT median_events mad_events | eval silence_minutes=if(isnull(last_seen),99999,round((now()-last_seen)/60,1)) | eval state=case(silence_minutes&gt;max_silence_minutes,"DATA_DOWN", isnotnull(median_events) AND events_24h&lt;(median_events-4*mad_events),"VOLUME_LOW", isnotnull(median_events) AND events_24h&gt;(median_events+8*mad_events),"VOLUME_SPIKE",1=1,"OK") | where state!="OK" AND declared_tier="Tier 0" | eval sla_breach_in_min=round(sla_response_minutes-silence_minutes,0) | table dataset_id ae_name index sourcetype state silence_minutes events_24h median_events technical_owner business_owner notify_channel | sort - silence_minutes</query><earliest>-1m</earliest><refresh>5m</refresh><refreshType>delay</refreshType></search>
+        <option name="count">20</option>
+        <format type="color" field="state">
+          <colorPalette type="map">{"DATA_DOWN":#DC4E41,"VOLUME_LOW":#F8BE34,"VOLUME_SPIKE":#F1813F}</colorPalette>
+        </format>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Health by tier</title>
+      <chart>
+        <search><query>| inputlookup dc_datasets_lookup where status="active" | `dc_default_silence` | lookup dc_observed_lookup dataset_id OUTPUT last_seen | eval silence_minutes=if(isnull(last_seen),99999,round((now()-last_seen)/60,1)) | eval state=case(isnull(last_seen),"NEVER_SEEN",silence_minutes&gt;max_silence_minutes,"DATA_DOWN",1=1,"OK") | chart count over declared_tier by state</query><earliest>-1m</earliest></search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.legend.placement">bottom</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Reconciliation trend (24h)</title>
+      <chart>
+        <search><query>index=summary_datacatalog source="dc_reconciliation" | timechart span=1h count by catalog_state</query><earliest>-24h</earliest><latest>now</latest></search>
+        <option name="charting.chart">area</option>
+        <option name="charting.chart.stackMode">stacked</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Outages ranked by blast radius - fix these in this order</title>
+      <table>
+        <search><query>| inputlookup dc_datasets_lookup where status="active" | `dc_default_silence` | lookup dc_observed_lookup dataset_id OUTPUT last_seen | eval silence_minutes=if(isnull(last_seen),99999,round((now()-last_seen)/60,1)) | where silence_minutes&gt;max_silence_minutes | join type=left dataset_id [| inputlookup dc_dependencies_lookup where dep_type="dataset" | rename dep_value as dataset_id | lookup dc_ko_lookup ko_id OUTPUT ko_tier ko_type | stats dc(eval(if(ko_type="correlation_search",ko_id,null()))) as detections_impacted, dc(eval(if(ko_type="dashboard",ko_id,null()))) as dashboards_impacted, dc(eval(if(ko_tier="Tier 0",ko_id,null()))) as tier0_objects_impacted by dataset_id] | fillnull value=0 detections_impacted dashboards_impacted tier0_objects_impacted | table dataset_id ae_name sourcetype declared_tier silence_minutes tier0_objects_impacted detections_impacted dashboards_impacted technical_owner | sort - tier0_objects_impacted - detections_impacted</query><earliest>-1m</earliest></search>
+        <option name="count">25</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Schema change history</title>
+      <table>
+        <search><query>| inputlookup dc_schema_versions_lookup | eval change_date=strftime(change_date,"%Y-%m-%d") | table change_date sourcetype schema_version change_type fields_added fields_removed approver change_ticket | sort - change_date</query><earliest>-1m</earliest></search>
+        <option name="count">20</option>
+      </table>
+    </panel>
+  </row>
+</dashboard>

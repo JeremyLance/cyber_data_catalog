@@ -1,0 +1,29 @@
+<dashboard theme="dark" version="1.1">
+  <label>Cyber Data Catalog - Coverage Gaps, Cost and Lifecycle</label>
+  <description>What the six-domain model requires vs what exists, what it costs, and what is safe to retire.</description>
+  <row>
+    <panel><title>Requirement coverage by tenant</title>
+      <chart><search><query>| inputlookup dc_requirement_coverage_lookup | chart count over ae_name by status</query><earliest>-1m</earliest></search>
+        <option name="charting.chart">bar</option><option name="charting.chart.stackMode">stacked</option></chart></panel>
+    <panel><title>Coverage by domain</title>
+      <chart><search><query>| inputlookup dc_requirement_coverage_lookup | stats count(eval(status="COVERED")) as covered, count as total by domain | eval coverage_pct=round(covered/total*100,1) | sort coverage_pct</query><earliest>-1m</earliest></search>
+        <option name="charting.chart">bar</option></chart></panel>
+  </row>
+  <row>
+    <panel><title>Required telemetry with no coverage - the gap register</title>
+      <table><search><query>| inputlookup dc_requirement_coverage_lookup where status="GAP - REQUIRED" | table ae_name uhgid req_id domain gap_reason | sort ae_name req_id</query><earliest>-1m</earliest></search><option name="count">40</option></table></panel>
+  </row>
+  <row>
+    <panel><title>Consolidation savings model</title>
+      <chart><search><query>| inputlookup dc_cost_lookup where scope_type="dataset" | eval category=case(disposition="DUPLICATE SPEND - cutover pending","Duplicate (dual-home)",disposition="DECOMMISSION CANDIDATE","Dead Tier 3 data",disposition="review - no consumers","Unconsumed data",1=1,"Productive") | stats sum(gb_per_day) as gb_per_day, sum(est_annual_cost) as est_annual_cost, dc(scope_id) as datasets by category | sort - est_annual_cost</query><earliest>-1m</earliest></search>
+        <option name="charting.chart">bar</option></chart></panel>
+    <panel><title>Offboarding readiness by tenant</title>
+      <table><search><query>| inputlookup dc_datasets_lookup | where status="active" | join type=left dataset_id [| inputlookup dc_dependencies_lookup where dep_type="dataset" | rename dep_value as dataset_id | lookup dc_ko_lookup ko_id OUTPUT ko_tier enabled | where enabled="yes" | stats dc(ko_id) as consumers, dc(eval(if(ko_tier="Tier 0",ko_id,null()))) as tier0_consumers by dataset_id] | fillnull value=0 consumers tier0_consumers | stats count as datasets, sum(tier0_consumers) as tier0_dependencies, sum(consumers) as content_dependencies, sum(eval(if(isnull(technical_owner) OR technical_owner="",1,0))) as unowned by uhgid, ae_name | eval readiness=case(tier0_dependencies&gt;0,"BLOCKED - Tier 0 dependency",content_dependencies&gt;0,"review - repoint content",unowned&gt;0,"review - unowned datasets",1=1,"ready to offboard") | table ae_name uhgid datasets content_dependencies tier0_dependencies unowned readiness | sort readiness</query><earliest>-1m</earliest></search><option name="count">25</option>
+        <format type="color" field="readiness"><colorPalette type="map">{"BLOCKED - Tier 0 dependency":#DC4E41,"review - repoint content":#F8BE34,"review - unowned datasets":#F1813F,"ready to offboard":#53A051}</colorPalette></format>
+      </table></panel>
+  </row>
+  <row>
+    <panel><title>Ingest cost by dataset</title>
+      <table><search><query>| inputlookup dc_cost_lookup where scope_type="dataset" | lookup dc_datasets_lookup dataset_id as scope_id OUTPUT ae_name sourcetype | table scope_id ae_name sourcetype declared_tier gb_per_day est_annual_cost consumer_count disposition | sort - est_annual_cost</query><earliest>-1m</earliest></search><option name="count">40</option></table></panel>
+  </row>
+</dashboard>

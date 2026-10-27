@@ -1,0 +1,56 @@
+<form theme="dark" version="1.1">
+  <label>Cyber Data Catalog - Reject Sourcetype</label>
+  <description>Marks a sourcetype from the Unmatched/Novel list as rejected - data the team has reviewed and decided not to catalog, where the fix is the remote AE updating their inputs to stop collecting it (e.g. dnf.log, instance-state). Rejection is GLOBAL by sourcetype name, not scoped to one tenant/index/dataset - matches how dc_valid_sourcetype and DC-38 already key off sourcetype alone. Writes to dc_sourcetype_rejections_lookup; DC-38 picks it up on its next run (every 2h) and reclassifies every occurrence of that sourcetype as REJECTED, where it then shows up on the Catalog Browse "Malformed or Rejected sourcetypes by tenant" panel instead of here. Ticket field is free text for now - filing a git issue automatically is a planned follow-up, not wired up yet.</description>
+
+  <fieldset submitButton="true" autoRun="false">
+    <input type="dropdown" token="sourcetype" searchWhenChanged="false">
+      <label>Sourcetype to reject</label>
+      <fieldForLabel>sourcetype</fieldForLabel>
+      <fieldForValue>sourcetype</fieldForValue>
+      <search>
+        <query>| inputlookup dc_shadow_classification_lookup | where classification="UNMATCHED_NOVEL" | stats sum(events_24h) as events_24h by sourcetype | sort sourcetype</query>
+      </search>
+    </input>
+    <input type="text" token="reason">
+      <label>Reason for rejecting</label>
+    </input>
+    <input type="text" token="ticket">
+      <label>Ticket (optional)</label>
+      <default></default>
+    </input>
+    <input type="text" token="performed_by">
+      <label>Performed by (your name/ID)</label>
+    </input>
+  </fieldset>
+
+  <row>
+    <panel>
+      <title>Where this sourcetype currently shows up - review before rejecting</title>
+      <table>
+        <search>
+          <query>| inputlookup dc_shadow_classification_lookup | where classification="UNMATCHED_NOVEL" AND sourcetype="$sourcetype$" | table uhgid sourcetype index events_24h any_ticket contracted_index checked | sort - events_24h</query>
+          <earliest>-1m</earliest>
+        </search>
+        <option name="count">20</option>
+      </table>
+    </panel>
+  </row>
+
+  <row depends="$sourcetype$">
+    <panel>
+      <title>Reject this sourcetype (writes to dc_sourcetype_rejections - applies to every tenant)</title>
+      <table>
+        <search>
+          <query>| makeresults
+| eval sourcetype="$sourcetype$", status="rejected", reason="$reason$", ticket="$ticket$", rejected_by="$performed_by$", rejected_date=now(), notes=""
+| eval _key=sourcetype
+| table _key sourcetype status reason ticket rejected_by rejected_date notes
+| outputlookup append=t dc_sourcetype_rejections_lookup
+| table sourcetype status reason ticket rejected_by</query>
+          <earliest>-1m</earliest>
+        </search>
+        <option name="count">5</option>
+      </table>
+    </panel>
+  </row>
+</form>

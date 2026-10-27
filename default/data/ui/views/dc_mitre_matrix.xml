@@ -1,0 +1,70 @@
+<dashboard theme="dark" version="1.1">
+  <label>MITRE ATT&amp;CK Coverage Matrix</label>
+  <description>Live comparison of production/risk-accepted correlation searches against the full ATT&amp;CK technique set from ctm_mitre_lookup.csv. Cell text is "Technique (detection count)". Bucket 0 = zero detections for that technique.</description>
+  <row>
+    <panel>
+      <title>Coverage by tactic - quick scan before the full matrix</title>
+      <table>
+        <search><query>| rest /servicesNS/-/-/saved/searches | search disabled=0 | fields title action.correlationsearch.annotations | rex field=action.correlationsearch.annotations "\"(?i)status\":\s*\[\"(?&lt;status&gt;[^\"]+)\"\]" | rex field=action.correlationsearch.annotations max_match=0 "\"(?&lt;mitre_attack_id&gt;T[0-9]{4}(?:\.[0-9]{3})?)\"" | mvexpand mitre_attack_id | search status IN (tg_prod, risk_only) mitre_attack_id=T* | stats count AS detection_count BY mitre_attack_id | append [| inputlookup ctm_mitre_lookup.csv | fields ID tactic | rename ID as mitre_attack_id | eval detection_count=0] | stats sum(detection_count) as detection_count, values(tactic) as tactic by mitre_attack_id | mvexpand tactic | stats count as techniques_total, sum(eval(if(detection_count=0,1,0))) as techniques_uncovered, sum(eval(if(detection_count&gt;=1 AND detection_count&lt;=2,1,0))) as techniques_thin by tactic | eval coverage_pct=round((techniques_total-techniques_uncovered)/techniques_total*100,1) | table tactic techniques_total techniques_uncovered techniques_thin coverage_pct | sort coverage_pct</query><earliest>-1m</earliest><latest>now</latest></search>
+        <option name="count">20</option>
+        <format type="color" field="coverage_pct">
+          <colorPalette type="minMidMax" minColor="#DC4E41" midColor="#F8BE34" maxColor="#53A051"/>
+          <scale type="minMidMax" minType="number" min="0" midType="number" mid="50" maxType="number" max="100"/>
+        </format>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>ATT&amp;CK Coverage Matrix - production and risk-accepted detections</title>
+      <table>
+        <search>
+          <query>| rest /servicesNS/-/-/saved/searches
+| search disabled=0
+| fields title action.correlationsearch.annotations action.notable.param.security_domain search
+| rex field=action.correlationsearch.annotations "\"(?i)status\":\s*\[\"(?&lt;status&gt;[^\"]+)\"\]"
+| rex field=action.correlationsearch.annotations max_match=0 "\"(?&lt;mitre_attack_id&gt;T[0-9]{4}(?:\.[0-9]{3})?)\""
+| mvexpand mitre_attack_id
+| search status IN (tg_prod, risk_only) mitre_attack_id=T*
+| stats count AS detection_count BY mitre_attack_id
+| append
+    [| inputlookup ctm_mitre_lookup.csv
+    | fields ID name tactic
+    | rename ID as mitre_attack_id, name as technique_name
+    | eval detection_count=0]
+| stats
+    sum(detection_count) as detection_count
+    values(technique_name) as technique_name
+    values(tactic) as tactic
+    by mitre_attack_id
+| mvexpand tactic
+| mvexpand technique_name
+| sort 0 tactic technique_name
+| streamstats count as row_id by tactic
+| eval range_bucket=case(
+    detection_count==0, 0,
+    detection_count&lt;=2, 1,
+    detection_count&lt;=4, 2,
+    detection_count&lt;=6, 3,
+    detection_count&lt;=10, 4,
+    detection_count&gt;10, 5
+    )
+| eval cell_display = technique_name . " (" . detection_count . ")"
+| eval cell_value = cell_display . ":" . range_bucket
+| xyseries row_id tactic cell_value
+| sort 0 row_id
+| table row_id
+    "Reconnaissance" "Resource Development" "Initial Access" "Execution" "Persistence"
+    "Privilege Escalation" "Defense Evasion" "Credential Access" "Discovery"
+    "Lateral Movement" "Collection" "Command and Control" "Exfiltration" "Impact"
+| fields - row_id</query>
+          <earliest>-1m</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="count">100</option>
+        <option name="wrap">true</option>
+        <option name="drilldown">none</option>
+      </table>
+    </panel>
+  </row>
+</dashboard>
