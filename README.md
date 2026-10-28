@@ -1,4 +1,4 @@
-# Cyber Data & Detection Catalog - v0.5.1
+# Cyber Data & Detection Catalog - v0.5.2
 
 Install: copy `cyber_data_catalog/` to `$SPLUNK_HOME/etc/apps/` and restart, or
 upload the tarball via Apps -> Manage Apps -> Install app from file.
@@ -59,7 +59,9 @@ On a fresh install, review the macros below before the first scheduled run.
 ## Dashboards
 `dc_catalog_home` · `dc_dataset_detail` · `dc_data_health` · `dc_impact_analysis` ·
 `dc_migration_pipeline` · `dc_cim_normalization` · `dc_detection_health` · `dc_index_standard` · `dc_coverage_cost_lifecycle` ·
-`dc_infrastructure` · `dc_mitre_matrix`
+`dc_infrastructure` · `dc_mitre_matrix` · `dc_cim_coverage_command_center` · `dc_ingestion_quality`
+
+The nav groups them into four menus: Tenants and Catalog, Data Quality, Detections, Platform.
 
 Drilldown and form pages (not in the nav): `dc_sourcetype_reject` · `dc_infra_promote` · `dc_setup`
 
@@ -109,6 +111,23 @@ sourcetypes proposed for Tier 0. DC-21 only changes `proposed_tier`, so each sho
 and Tier 0 should apply to domain controllers only.
 
 ## Changelog
+### 0.5.2
+- CIM Coverage Command Center: new default tab reconciles every discovered sourcetype against
+  the contract master, catalog and rejections (malformed, no contract, contracted with no data,
+  CIM gaps), with a tenant picker and a "How to read this" tab explaining the score and flags.
+- DC-101 and the Command Center now score Email (All_Email) and Network_Resolution (DNS), and use
+  real CIM fields for Network_Sessions (src_ip/dest_ip/user/signature) and Intrusion_Detection
+  (vendor_product instead of the non-existent app).
+- Catalog Browse, Data Health and Impact Analysis load their data once per page and post-process
+  it per panel. Catalog Browse filters now apply to every panel.
+- Ingestion Quality rebuilt: it used macros from another app and was truncated.
+- Nav grouped into menus.
+- Promote Candidate updates only the promoted candidate (it rewrote the whole collection),
+  quotes form tokens, and writes only once node type, tier and name are set.
+- DC-30 runs daily instead of hourly; DC-35 computes latency from the last hour, not a 24h raw scan.
+- Seeds: sourcetype registry merged from the search head export (55 -> 141 rows, covers every
+  cataloged sourcetype); two form-entered rejections backported.
+
 ### 0.5.1
 - Multi-line searches (DC-00d, 00e, 01, 07, 101) now carry `\` line continuations; without them
   Splunk read only the first line. DC-31 rewritten (its SPL had CSV-doubled quotes).

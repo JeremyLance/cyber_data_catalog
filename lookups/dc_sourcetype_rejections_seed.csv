@@ -1,3 +1,5 @@
 sourcetype,status,reason,ticket,rejected_by,rejected_date,notes
-instance-state,rejected,"Raw EMR instance-state log content leaking into sourcetype field from uhgid-000024 - not usable security telemetry",,,,
-dnf.log,rejected,"Linux dnf package-manager log - not security-relevant; AE instructed to stop forwarding",,,,
+instance-state,rejected,Raw EMR instance-state log content leaking into sourcetype field from uhgid-000024 - not usable security telemetry,,,,
+dnf.log,rejected,Linux dnf package-manager log - not security-relevant; AE instructed to stop forwarding,,,,
+_var_log_messages-too_small,rejected,Bad sourcetype and needs cleanup,,jlance2,1793055234,
+edge-sourceType,rejected,sourcetype is not a security monitored sourcetype and needs dropped from logging,,jlance2,1793055322,

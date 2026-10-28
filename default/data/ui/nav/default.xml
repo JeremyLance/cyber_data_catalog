@@ -1,16 +1,26 @@
 <nav search_view="search" color="#65A637">
   <view name="dc_catalog_home" default="true"/>
-  <view name="dc_dataset_detail"/>
-  <view name="dc_data_health"/>
-  <view name="dc_impact_analysis"/>
-  <view name="dc_infrastructure"/>
-  <view name="dc_infra_promote"/>
-  <view name="dc_migration_pipeline"/>
-  <view name="dc_cim_normalization"/>
-  <view name="dc_cim_coverage_command_center"/>
-  <view name="dc_detection_health"/>
-  <view name="dc_mitre_matrix"/>
-  <view name="dc_index_standard"/>
-  <view name="dc_coverage_cost_lifecycle"/>
+  <collection label="Tenants and Catalog">
+    <view name="dc_catalog_home"/>
+    <view name="dc_dataset_detail"/>
+    <view name="dc_coverage_cost_lifecycle"/>
+  </collection>
+  <collection label="Data Quality">
+    <view name="dc_cim_coverage_command_center"/>
+    <view name="dc_cim_normalization"/>
+    <view name="dc_data_health"/>
+    <view name="dc_ingestion_quality"/>
+    <view name="dc_impact_analysis"/>
+    <view name="dc_index_standard"/>
+  </collection>
+  <collection label="Detections">
+    <view name="dc_detection_health"/>
+    <view name="dc_mitre_matrix"/>
+  </collection>
+  <collection label="Platform">
+    <view name="dc_infrastructure"/>
+    <view name="dc_infra_promote"/>
+    <view name="dc_migration_pipeline"/>
+  </collection>
   <view name="search"/>
 </nav>

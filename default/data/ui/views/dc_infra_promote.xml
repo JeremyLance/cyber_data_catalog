@@ -1,6 +1,6 @@
 <form theme="dark" version="1.1">
   <label>Cyber Data Catalog - Promote HF/EP Candidate</label>
-  <description>Reviews a DC-98 discovered candidate, then promotes it into dc_infra_nodes_lookup, logs the event to dc_lifecycle_events, and marks the candidate as promoted so it drops off the pending list. Writes to the KV Store directly - never touches the git-managed seed CSV.</description>
+  <description>Pick a candidate, fill in node type, tier and your name, then Submit; the three write steps only run once those are set. Reviews a DC-98 discovered candidate, then promotes it into dc_infra_nodes_lookup, logs the event to dc_lifecycle_events, and marks the candidate as promoted so it drops off the pending list. Writes to the KV Store directly - never touches the git-managed seed CSV.</description>
 
   <fieldset submitButton="true" autoRun="false">
     <input type="dropdown" token="candidate_id" searchWhenChanged="false">
@@ -80,13 +80,13 @@
     </panel>
   </row>
 
-  <row depends="$candidate_id$">
+  <row depends="$candidate_id$,$node_type$,$declared_tier$,$performed_by$">
     <panel>
       <title>1. Promote to registry (dc_infra_nodes)</title>
       <table>
         <search>
           <query>| makeresults
-| eval node_id="$candidate_id$", node_name="$node_name$", node_type="$node_type$", uhgid="$uhgid$", ae_name="$ae_name$", environment="$environment$", role="$role$", host="$host$", declared_tier="$declared_tier$", technical_owner="$technical_owner$", backup_owner="$backup_owner$", datacenter_site="$datacenter_site$", ha_pair_id="$ha_pair_id$", status="active", lifecycle_state="onboarded", onboard_date=now(), last_reviewed=now(), notes="$notes$", dataset_count=0, tier0_datasets_behind_node=0
+| eval node_id=$candidate_id|s$, node_name=$node_name|s$, node_type=$node_type|s$, uhgid=$uhgid|s$, ae_name=$ae_name|s$, environment=$environment|s$, role=$role|s$, host=$host|s$, declared_tier=$declared_tier|s$, technical_owner=$technical_owner|s$, backup_owner=$backup_owner|s$, datacenter_site=$datacenter_site|s$, ha_pair_id=$ha_pair_id|s$, status="active", lifecycle_state="onboarded", onboard_date=now(), last_reviewed=now(), notes=$notes|s$, dataset_count=0, tier0_datasets_behind_node=0
 | eval _key=node_id
 | table _key node_id node_name node_type uhgid ae_name environment role host declared_tier technical_owner backup_owner datacenter_site ha_pair_id status lifecycle_state onboard_date last_reviewed notes dataset_count tier0_datasets_behind_node
 | outputlookup append=t dc_infra_nodes_lookup
@@ -101,7 +101,7 @@
       <table>
         <search>
           <query>| makeresults
-| eval event_id="evt|"."$candidate_id$"."|".now(), scope_type="infra_node", scope_value="$candidate_id$", event_type="onboarded", event_date=now(), from_state="candidate", to_state="active", ticket="$change_ticket$", performed_by="$performed_by$", notes="Promoted from DC-98 discovery. ".("$notes$")
+| eval event_id="evt|".$candidate_id|s$."|".now(), scope_type="infra_node", scope_value=$candidate_id|s$, event_type="onboarded", event_date=now(), from_state="candidate", to_state="active", ticket=$change_ticket|s$, performed_by=$performed_by|s$, notes="Promoted from DC-98 discovery. ".($notes|s$)
 | eval _key=event_id
 | table _key event_id scope_type scope_value event_type event_date from_state to_state ticket performed_by notes
 | outputlookup append=t dc_lifecycle_events_lookup
@@ -115,10 +115,10 @@
       <title>3. Mark candidate as promoted (dc_infra_candidates)</title>
       <table>
         <search>
-          <query>| inputlookup dc_infra_candidates_lookup
-| eval status=if(candidate_id="$candidate_id$","promoted",status)
-| outputlookup dc_infra_candidates_lookup
-| where candidate_id="$candidate_id$"
+          <query>| inputlookup dc_infra_candidates_lookup where candidate_id=$candidate_id|s$
+| eval status="promoted"
+| table _key candidate_id host suspected_type evidence confidence uhgid_guess first_seen last_seen events_seen discovered status
+| outputlookup append=t dc_infra_candidates_lookup
 | table candidate_id host status</query>
           <earliest>-1m</earliest>
         </search>

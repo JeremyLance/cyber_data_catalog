@@ -1,11 +1,102 @@
-<form version="1.1" theme="dark">  <label>Splunk Ingestion Data Quality</label>  <search id="base_1">    <query>`sim_set_index_internal` source=*splunkd.log*    (component=AggregatorMiningProcessor OR component=LineBreakingProcessor OR component=DateParserVerbose)    (log_level=WARN OR log_level=ERROR) | rex field=_raw "Context: source(::|=)(?&lt;context_source&gt;[^\|]*?)\|host(::|=)(?&lt;context_host&gt;[^\|]*?)\|(?&lt;context_sourcetype&gt;[^\|]*?)\|" | eval data_source = if(isnull(data_source) AND isnotnull(context_source), context_source, data_source) | eval data_sourcetype = if(isnull(data_sourcetype) AND isnotnull(context_sourcetype), context_sourcetype, data_sourcetype) | eval data_host = if(isnull(data_host) AND isnotnull(context_host), context_host, data_host) | search `sim_exclude_internal_sourcetypes(data_sourcetype)` | fields count data_source event_message data_sourcetype component data_host</query>    <earliest>$time.earliest$</earliest>    <latest>$time.latest$</latest>    <sampleRatio>1</sampleRatio>  </search>  <search id="base_2">    <query>`sim_set_index_internal` source=*splunkd.log*    (component=AggregatorMiningProcessor OR component=LineBreakingProcessor OR component=DateParserVerbose)    (log_level=WARN OR log_level=ERROR) | rex field=_raw "Context: source(::|=)(?&lt;context_source&gt;[^\|]*?)\|host(::|=)(?&lt;context_host&gt;[^\|]*?)\|(?&lt;context_sourcetype&gt;[^\|]*?)\|" | eval data_source = if(isnull(data_source) AND isnotnull(context_source), context_source, data_source) | eval data_sourcetype = if(isnull(data_sourcetype) AND isnotnull(context_sourcetype), context_sourcetype, data_sourcetype) | eval data_host = if(isnull(data_host) AND isnotnull(context_host), context_host, data_host) | search `sim_exclude_internal_sourcetypes(data_sourcetype)` | fields component data_sourcetype  </query>    <earliest>$time.earliest$</earliest>    <latest>$time.latest$</latest>    <sampleRatio>1</sampleRatio>  </search>  <fieldset submitButton="true" autoRun="false"></fieldset>  <row>    <panel>      <title>Last 14 day totals</title>      <chart>        <search>          <query>index=_internal source=*splunkd.log* (log_level=ERROR OR log_level=WARN) (component=AggregatorMiningProcessor OR component=DateParserVerbose OR component=LineBreakingProcessor)| eval data_source=if((isnull(data_source) AND isnotnull(context_source)),context_source,data_source), data_host=if((isnull(data_host) AND isnotnull(context_host)),context_host,data_host), data_sourcetype=if((isnull(data_sourcetype) AND isnotnull(context_sourcetype)),context_sourcetype,data_sourcetype)|  timechart span=1d count(eval(component=="LineBreakingProcessor" OR component=="DateParserVerbose" OR component=="AggregatorMiningProcessor")) as "Total Issues"</query>          <earliest>-14d</earliest>          <latest>now</latest>        </search>        <option name="charting.chart">line</option>        <option name="charting.drilldown">none</option>        <option name="refresh.display">progressbar</option>      </chart>    </panel>  </row>  <row>    <panel>      <title>Excessive Sourcetypes</title>      <table>        <search>          <query>| tstats dc(sourcetype) as sourcetypes where `dc_scope_indexes` by index| sort - sourcetypes</query>          <earliest>-24h@h</earliest>          <latest>now</latest>        </search>
-        <!-- NOTE: the source file this dashboard was copied from was truncated here.
-             Closing tags below were added only to keep this XML well-formed for
-             packaging/install - no panel content was invented. The "Excessive
-             Sourcetypes" table above has a query/time-range but no <option> block
-             (e.g. row count) and this dashboard may have had more rows/panels in
-             the original that were never captured. Review and complete by hand. -->
+<form version="1.1" theme="dark">
+  <label>Cyber Data Catalog - Ingestion Quality</label>
+  <description>Line-breaking, timestamp and truncation warnings from splunkd, by sourcetype and host. These are the parsing failures that make data look present while fields and events are wrong. Feeds the same signals as DC-35.</description>
+
+  <fieldset submitButton="false" autoRun="true">
+    <input type="time" token="time" searchWhenChanged="true">
+      <label>Time range</label>
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="text" token="st" searchWhenChanged="true">
+      <label>Sourcetype contains</label>
+      <default>*</default>
+    </input>
+  </fieldset>
+
+  <!-- One pass over _internal, summarized per hour; every panel post-processes it. -->
+  <search id="issues">
+    <query>index=_internal source=*splunkd.log* (log_level=WARN OR log_level=ERROR) (component=AggregatorMiningProcessor OR component=LineBreakingProcessor OR component=DateParserVerbose)
+| rex "Context: source(::|=)(?&lt;context_source&gt;[^\|]*?)\|host(::|=)(?&lt;context_host&gt;[^\|]*?)\|(?&lt;context_sourcetype&gt;[^\|]*?)\|"
+| eval data_sourcetype=coalesce(data_sourcetype, context_sourcetype), data_host=coalesce(data_host, context_host)
+| where isnotnull(data_sourcetype) AND NOT match(data_sourcetype, "^(splunkd|splunk_|stash$|mongod|kvstore)")
+| eval issue=case(component="LineBreakingProcessor","line breaking", component="DateParserVerbose","timestamp", component="AggregatorMiningProcessor","event truncation / merging")
+| bin _time span=1h
+| stats count by _time issue data_sourcetype data_host</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
+
+  <row>
+    <panel>
+      <single>
+        <title>Parsing warnings</title>
+        <search base="issues"><query>| search data_sourcetype=*$st$* | stats sum(count)</query></search>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Sourcetypes affected</title>
+        <search base="issues"><query>| search data_sourcetype=*$st$* | stats dc(data_sourcetype)</query></search>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Hosts affected</title>
+        <search base="issues"><query>| search data_sourcetype=*$st$* | stats dc(data_host)</query></search>
+      </single>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Warnings over time by issue type</title>
+      <chart>
+        <search base="issues"><query>| search data_sourcetype=*$st$* | timechart sum(count) by issue</query></search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.legend.placement">bottom</option>
+      </chart>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Sourcetypes with parsing issues - fix the props.conf for these</title>
+      <table>
+        <search base="issues"><query>| search data_sourcetype=*$st$*
+| chart sum(count) over data_sourcetype by issue
+| addtotals fieldname=total
+| rename data_sourcetype as sourcetype
+| lookup dc_datasets_lookup sourcetype OUTPUT ae_name declared_tier
+| eval tenants=mvjoin(mvdedup(ae_name),", "), declared_tier=mvjoin(mvdedup(declared_tier),", ")
+| fields - ae_name
+| sort - total</query></search>
+        <option name="count">25</option>
+      </table>
+    </panel>
+    <panel>
+      <title>Hosts sending them - where the fix is deployed</title>
+      <table>
+        <search base="issues"><query>| search data_sourcetype=*$st$* | stats sum(count) as warnings, values(data_sourcetype) as sourcetypes, values(issue) as issues by data_host | sort - warnings</query></search>
+        <option name="count">25</option>
+      </table>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Indexes with the most sourcetypes - possible sourcetype sprawl</title>
+      <table>
+        <search>
+          <query>| tstats dc(sourcetype) as sourcetypes, values(sourcetype) as sourcetype_list where `dc_scope_indexes` by index | eval sourcetype_list=mvjoin(sourcetype_list,", ") | sort - sourcetypes</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
         <option name="count">20</option>
+        <option name="wrap">true</option>
       </table>
     </panel>
   </row>

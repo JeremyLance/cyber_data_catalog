@@ -469,6 +469,55 @@
         <option name="refresh.display">progressbar</option>
       </table>
     </panel>
+    <panel>
+      <title>Email (live)</title>
+      <table>
+        <search>
+          <query>| tstats summariesonly=true count as total from datamodel=Email where index=$index_filter$ sourcetype=$sourcetype_filter$ by index sourcetype
+| append [ | tstats summariesonly=true count as has_src_user from datamodel=Email where index=$index_filter$ sourcetype=$sourcetype_filter$ All_Email.src_user!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_recipient from datamodel=Email where index=$index_filter$ sourcetype=$sourcetype_filter$ All_Email.recipient!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_action from datamodel=Email where index=$index_filter$ sourcetype=$sourcetype_filter$ All_Email.action!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_subject from datamodel=Email where index=$index_filter$ sourcetype=$sourcetype_filter$ All_Email.subject!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_src from datamodel=Email where index=$index_filter$ sourcetype=$sourcetype_filter$ All_Email.src!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_dest from datamodel=Email where index=$index_filter$ sourcetype=$sourcetype_filter$ All_Email.dest!="unknown" by index sourcetype ]
+| stats sum(total) as total, sum(has_src_user) as has_src_user, sum(has_recipient) as has_recipient, sum(has_action) as has_action, sum(has_subject) as has_subject, sum(has_src) as has_src, sum(has_dest) as has_dest by index sourcetype
+| eval pct_src_user=round(100*has_src_user/total,2), pct_recipient=round(100*has_recipient/total,2), pct_action=round(100*has_action/total,2), pct_subject=round(100*has_subject/total,2), pct_src=round(100*has_src/total,2), pct_dest=round(100*has_dest/total,2)
+| eval coverage_score=round((pct_src_user*0.25)+(pct_recipient*0.25)+(pct_action*0.20)+(pct_subject*0.10)+(pct_src*0.10)+(pct_dest*0.10),2)
+| eval investigation_flag=case(coverage_score&lt;20,"CRITICAL LOW",coverage_score&lt;50,"VERY LOW",coverage_score&lt;80,"LOW",true(),"OK")
+| table index sourcetype total pct_src_user pct_recipient pct_action pct_subject pct_src pct_dest coverage_score investigation_flag
+| sort coverage_score</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+
+  <row depends="$mode_live$,$tab_cim$">
+    <panel>
+      <title>Network Resolution (DNS) (live)</title>
+      <table>
+        <search>
+          <query>| tstats summariesonly=true count as total from datamodel=Network_Resolution where index=$index_filter$ sourcetype=$sourcetype_filter$ by index sourcetype
+| append [ | tstats summariesonly=true count as has_query from datamodel=Network_Resolution where index=$index_filter$ sourcetype=$sourcetype_filter$ DNS.query!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_answer from datamodel=Network_Resolution where index=$index_filter$ sourcetype=$sourcetype_filter$ DNS.answer!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_reply_code from datamodel=Network_Resolution where index=$index_filter$ sourcetype=$sourcetype_filter$ DNS.reply_code!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_src from datamodel=Network_Resolution where index=$index_filter$ sourcetype=$sourcetype_filter$ DNS.src!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_dest from datamodel=Network_Resolution where index=$index_filter$ sourcetype=$sourcetype_filter$ DNS.dest!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_record_type from datamodel=Network_Resolution where index=$index_filter$ sourcetype=$sourcetype_filter$ DNS.record_type!="unknown" by index sourcetype ]
+| stats sum(total) as total, sum(has_query) as has_query, sum(has_answer) as has_answer, sum(has_reply_code) as has_reply_code, sum(has_src) as has_src, sum(has_dest) as has_dest, sum(has_record_type) as has_record_type by index sourcetype
+| eval pct_query=round(100*has_query/total,2), pct_answer=round(100*has_answer/total,2), pct_reply_code=round(100*has_reply_code/total,2), pct_src=round(100*has_src/total,2), pct_dest=round(100*has_dest/total,2), pct_record_type=round(100*has_record_type/total,2)
+| eval coverage_score=round((pct_query*0.30)+(pct_answer*0.20)+(pct_reply_code*0.15)+(pct_src*0.15)+(pct_dest*0.10)+(pct_record_type*0.10),2)
+| eval investigation_flag=case(coverage_score&lt;20,"CRITICAL LOW",coverage_score&lt;50,"VERY LOW",coverage_score&lt;80,"LOW",true(),"OK")
+| table index sourcetype total pct_query pct_answer pct_reply_code pct_src pct_dest pct_record_type coverage_score investigation_flag
+| sort coverage_score</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
   </row>
 
   <!-- ====================================================
@@ -486,7 +535,7 @@
           <tr><td>contract</td><td><b>CONTRACTED</b>: a contract exists for this sourcetype in this tenant's index. <b>OTHER TENANT ONLY</b>: contracted elsewhere, not for this tenant. <b>NO CONTRACT</b>: data is being ingested with no contract.</td></tr>
           <tr><td>cde_approved</td><td>Whether CDE has approved the contract (<b>pending</b> until the contract master says true).</td></tr>
           <tr><td>expected_cim</td><td>The data models the contract or the catalog says this sourcetype should feed.</td></tr>
-          <tr><td>cim_score / cim_flag</td><td>The best CIM field coverage score for this sourcetype (see below). <b>NOT IN SCORED MODELS</b> means none of its events reached the 8 data models DC-101 scores, either because it is not mapped to CIM or because it belongs to a model not scored yet (Email, Network_Resolution).</td></tr>
+          <tr><td>cim_score / cim_flag</td><td>The best CIM field coverage score for this sourcetype (see below). <b>NOT IN SCORED MODELS</b> means none of its events reached the 10 data models DC-101 scores, usually because it is not mapped to any CIM data model (or is not tagged for one).</td></tr>
           <tr><td>priority</td><td><b>HIGH</b>: malformed or rejected sourcetype, or data ingested with no contract. <b>MEDIUM</b>: any other gap. <b>OK</b>: no gap.</td></tr>
           <tr><td>gap</td><td>The single most important action for the row, in priority order: sourcetype problem, no data, no contract, contract for another tenant only, not cataloged, CIM gap, awaiting CDE.</td></tr>
         </table>
@@ -505,6 +554,8 @@
           <tr><td>Endpoint (Processes)</td><td>process_name 25%, dest 25%, user 20%, parent_process_name 20%, process_id 10%</td></tr>
           <tr><td>Web</td><td>url 25%, dest 20%, user 15%, http_method 15%, status 15%, src 10%</td></tr>
           <tr><td>Change</td><td>object 25%, action 20%, result 20%, user 15%, dest 10%, src 10%</td></tr>
+          <tr><td>Email</td><td>src_user (sender) 25%, recipient 25%, action 20%, subject 10%, src 10%, dest 10%</td></tr>
+          <tr><td>Network_Resolution (DNS)</td><td>query 30%, answer 20%, reply_code 15%, src 15%, dest 10%, record_type 10%</td></tr>
         </table>
 
         <h3>investigation_flag</h3>
@@ -521,7 +572,7 @@
         <ul>
           <li>Fast mode covers the last 4 hours of accelerated data model summaries; a sourcetype quiet in that window is missing from the scorecard.</li>
           <li>Only accelerated data counts (summariesonly=true).</li>
-          <li>Email and Network_Resolution are not scored yet.</li>
+          <li>Ten data models are scored: Authentication, Alerts, Network_Traffic, Network_Sessions, Intrusion_Detection, Malware, Endpoint (Processes), Web, Change, Email, Network_Resolution (DNS). Others (for example DLP or Vulnerabilities) are not.</li>
         </ul>
       </html>
     </panel>

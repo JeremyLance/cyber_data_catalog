@@ -1,6 +1,22 @@
 <form theme="dark" version="1.1">
   <label>Cyber Data Catalog - Browse</label>
-  <description>Every tenant x index x sourcetype we know about, what tier it is, who owns it, and whether it is actually flowing.</description>
+  <description>Every tenant x index x sourcetype we know about, what tier it is, who owns it, and whether it is actually flowing. The filters apply to every panel.</description>
+
+  <!-- Loaded once per page view; every panel below post-processes these. -->
+  <search id="catalog">
+    <query>| inputlookup dc_datasets_lookup
+| lookup dc_observed_lookup dataset_id OUTPUT last_seen events_24h
+| lookup dc_baselines_lookup dataset_id OUTPUT median_events mad_events
+| `dc_default_silence`
+| fields dataset_id uhgid ae_name domain index sourcetype declared_tier proposed_tier status technical_owner contract_status schema_version gate1_normalization gate2_detection gate3_soc enterprise_ready last_seen events_24h median_events mad_events max_silence_minutes</query>
+    <earliest>-1m</earliest>
+  </search>
+  <search id="shadow">
+    <query>| inputlookup dc_shadow_classification_lookup
+| fields dataset_id uhgid sourcetype index classification cde_approved exact_ticket any_ticket events_24h</query>
+    <earliest>-1m</earliest>
+  </search>
+
   <fieldset submitButton="false" autoRun="true">
     <input type="dropdown" token="tenant" searchWhenChanged="true">
       <label>Tenant (UHGID)</label>
@@ -8,7 +24,7 @@
       <default>*</default>
       <fieldForLabel>ae_name</fieldForLabel>
       <fieldForValue>uhgid</fieldForValue>
-      <search><query>| inputlookup dc_datasets_lookup | stats count by uhgid ae_name | eval ae_name=ae_name." (".uhgid.")" | sort ae_name</query></search>
+      <search><query>| inputlookup dc_datasets_lookup | stats first(ae_name) as ae_name by uhgid | eval ae_name=ae_name." (".uhgid.")" | sort ae_name</query></search>
     </input>
     <input type="dropdown" token="domain" searchWhenChanged="true">
       <label>Domain</label>
@@ -39,13 +55,13 @@
     <panel>
       <single>
         <title>Datasets cataloged</title>
-        <search><query>| inputlookup dc_datasets_lookup | where status="active" | stats count</query><earliest>-1m</earliest></search>
+        <search base="catalog"><query>| where status="active" | search uhgid=$tenant|s$ domain=$domain|s$ declared_tier=$tier|s$ sourcetype=*$st$* | stats count</query></search>
       </single>
     </panel>
     <panel>
       <single>
         <title>Owner coverage</title>
-        <search><query>| inputlookup dc_datasets_lookup | where status="active" | eval o=if(isnotnull(technical_owner) AND technical_owner!="",1,0) | stats sum(o) as owned, count as total | eval pct=round(owned/total*100,1) | fields pct</query><earliest>-1m</earliest></search>
+        <search base="catalog"><query>| where status="active" | search uhgid=$tenant|s$ domain=$domain|s$ declared_tier=$tier|s$ sourcetype=*$st$* | eval o=if(isnotnull(technical_owner) AND technical_owner!="",1,0) | stats sum(o) as owned, count as total | eval pct=if(total=0,0,round(owned/total*100,1)) | fields pct</query></search>
         <option name="unit">%</option>
         <option name="rangeColors">["0xdc4e41","0xf8be34","0x53a051"]</option>
         <option name="rangeValues">[70,95]</option>
@@ -54,8 +70,8 @@
     </panel>
     <panel>
       <single>
-        <title>Tier 0 with approved contract</title>
-        <search><query>| inputlookup dc_datasets_lookup | where declared_tier="Tier 0" | eval c=if(contract_status="approved",1,0) | stats sum(c) as ok, count as total | eval pct=if(total=0,0,round(ok/total*100,1)) | fields pct</query><earliest>-1m</earliest></search>
+        <title>Datasets with an approved contract</title>
+        <search base="catalog"><query>| where status="active" | search uhgid=$tenant|s$ domain=$domain|s$ declared_tier=$tier|s$ sourcetype=*$st$* | eval c=if(contract_status="approved",1,0) | stats sum(c) as ok, count as total | eval pct=if(total=0,0,round(ok/total*100,1)) | fields pct</query></search>
         <option name="unit">%</option>
         <option name="rangeColors">["0xdc4e41","0xf8be34","0x53a051"]</option>
         <option name="rangeValues">[80,100]</option>
@@ -65,7 +81,7 @@
     <panel>
       <single>
         <title>Shadow datasets (observed, not cataloged)</title>
-        <search><query>| inputlookup dc_shadow_classification_lookup | stats dc(dataset_id)</query><earliest>-1m</earliest></search>
+        <search base="shadow"><query>| search uhgid=$tenant|s$ sourcetype=*$st$* | stats dc(dataset_id)</query></search>
         <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
         <option name="rangeValues">[0,3]</option>
         <option name="useColors">1</option>
@@ -75,23 +91,54 @@
 
   <row>
     <panel>
-      <title>Shadow dataset classification (last 24h) - see DC-38</title>
+      <title>Catalog</title>
+      <table>
+        <search base="catalog"><query>| search uhgid=$tenant|s$ domain=$domain|s$ declared_tier=$tier|s$ sourcetype=*$st$*
+| eval silence_min=if(isnull(last_seen),null(),round((now()-last_seen)/60,1))
+| eval health=case(isnull(last_seen),"NEVER_SEEN", silence_min&gt;max_silence_minutes,"DATA_DOWN", isnotnull(median_events) AND events_24h&lt;(median_events-4*mad_events),"VOLUME_LOW", 1=1,"OK")
+| eval last_seen=strftime(last_seen,"%Y-%m-%d %H:%M")
+| table dataset_id ae_name domain index sourcetype declared_tier proposed_tier health events_24h last_seen technical_owner contract_status schema_version gate1_normalization gate2_detection gate3_soc enterprise_ready
+| sort declared_tier ae_name sourcetype</query></search>
+        <option name="count">25</option>
+        <option name="drilldown">cell</option>
+        <format type="color" field="health">
+          <colorPalette type="map">{"DATA_DOWN":#DC4E41,"VOLUME_LOW":#F8BE34,"OK":#53A051,"NEVER_SEEN":#8C8C8C}</colorPalette>
+        </format>
+        <format type="color" field="declared_tier">
+          <colorPalette type="map">{"Tier 0":#DC4E41,"Tier 1":#F8BE34,"Tier 2":#708794,"Tier 3":#8C8C8C,"Tier 4":#8C8C8C,"Tier 5":#5C6773}</colorPalette>
+        </format>
+        <drilldown>
+          <link target="_blank">/app/cyber_data_catalog/dc_dataset_detail?form.dataset_id=$row.dataset_id$</link>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Tenant x Domain coverage (flowing / cataloged)</title>
+      <table>
+        <search base="catalog"><query>| where status="active" | search uhgid=$tenant|s$ declared_tier=$tier|s$ sourcetype=*$st$*
+| eval flowing=if(isnotnull(last_seen) AND (now()-last_seen)&lt;86400,1,0)
+| chart sum(flowing) as flowing count as cataloged over ae_name by domain</query></search>
+        <option name="count">30</option>
+      </table>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Shadow dataset classification - see DC-38</title>
       <chart>
-        <search>
-          <query>| inputlookup dc_shadow_classification_lookup | stats count by classification</query>
-          <earliest>-1m</earliest>
-        </search>
+        <search base="shadow"><query>| search uhgid=$tenant|s$ sourcetype=*$st$* | stats count by classification</query></search>
         <option name="charting.chart">pie</option>
       </chart>
     </panel>
     <panel>
       <title>Unmatched/novel sourcetypes needing a new contract (click a row to reject it instead)</title>
       <table>
-        <search>
-          <query>| inputlookup dc_shadow_classification_lookup | where classification="UNMATCHED_NOVEL" | stats sum(events_24h) as events_24h by uhgid, sourcetype, index | sort - events_24h</query>
-          <earliest>-1m</earliest>
-        </search>
-        <option name="count">25</option>
+        <search base="shadow"><query>| search uhgid=$tenant|s$ sourcetype=*$st$* | where classification="UNMATCHED_NOVEL" | stats sum(events_24h) as events_24h by uhgid, sourcetype, index | sort - events_24h</query></search>
+        <option name="count">10</option>
         <option name="drilldown">cell</option>
         <drilldown>
           <link target="_blank">/app/cyber_data_catalog/dc_sourcetype_reject?form.sourcetype=$row.sourcetype$</link>
@@ -104,57 +151,21 @@
     <panel>
       <title>Contract-matched, pending CDE approval</title>
       <table>
-        <search>
-          <query>| inputlookup dc_shadow_classification_lookup | where classification IN ("CONTRACT_MATCHED_EXACT","CONTRACT_MATCHED_OTHER_TENANT") | eval cde_approved=coalesce(cde_approved,"false") | table dataset_id uhgid sourcetype index classification cde_approved exact_ticket any_ticket events_24h | sort cde_approved - events_24h</query>
-          <earliest>-1m</earliest>
-        </search>
-        <option name="count">25</option>
+        <search base="shadow"><query>| search uhgid=$tenant|s$ sourcetype=*$st$* | where classification IN ("CONTRACT_MATCHED_EXACT","CONTRACT_MATCHED_OTHER_TENANT") | eval cde_approved=coalesce(cde_approved,"false") | table dataset_id uhgid sourcetype index classification cde_approved exact_ticket any_ticket events_24h | sort cde_approved - events_24h</query></search>
+        <option name="count">10</option>
         <format type="color" field="cde_approved">
           <colorPalette type="map">{"true":#53A051,"false":#F8BE34}</colorPalette>
         </format>
       </table>
     </panel>
     <panel>
-      <title>Malformed or Rejected sourcetypes by tenant - needs source-side cleanup</title>
+      <title>Malformed or rejected sourcetypes by tenant - needs source-side cleanup</title>
       <table>
-        <search>
-          <query>| inputlookup dc_shadow_classification_lookup | where classification IN ("MALFORMED_SOURCETYPE","REJECTED") | stats sum(events_24h) as events_24h, dc(sourcetype) as distinct_bad_sourcetypes, values(classification) as classification by uhgid | sort - events_24h</query>
-          <earliest>-1m</earliest>
-        </search>
-        <option name="count">25</option>
+        <search base="shadow"><query>| search uhgid=$tenant|s$ | where classification IN ("MALFORMED_SOURCETYPE","REJECTED") | stats sum(events_24h) as events_24h, dc(sourcetype) as distinct_bad_sourcetypes, values(classification) as classification by uhgid | sort - events_24h</query></search>
+        <option name="count">10</option>
         <format type="color" field="classification">
           <colorPalette type="map">{"MALFORMED_SOURCETYPE":#DC4E41,"REJECTED":#F1813F}</colorPalette>
         </format>
-      </table>
-    </panel>
-  </row>
-
-  <row>
-    <panel>
-      <title>Tenant x Domain coverage (six-domain federated model)</title>
-      <table>
-        <search><query>| inputlookup dc_datasets_lookup | where status="active" | search uhgid=$tenant|s$ | eval flowing=0 | lookup dc_observed_lookup dataset_id OUTPUT last_seen | eval flowing=if(isnotnull(last_seen) AND (now()-last_seen)&lt;86400,1,0) | chart sum(flowing) as flowing count as cataloged over ae_name by domain</query><earliest>-1m</earliest></search>
-        <option name="count">30</option>
-      </table>
-    </panel>
-  </row>
-
-  <row>
-    <panel>
-      <title>Catalog</title>
-      <table>
-        <search><query>| inputlookup dc_datasets_lookup | search uhgid=$tenant|s$ domain=$domain|s$ declared_tier=$tier|s$ sourcetype=*$st$* | lookup dc_observed_lookup dataset_id OUTPUT last_seen events_24h | lookup dc_baselines_lookup dataset_id OUTPUT median_events mad_events | `dc_default_silence` | eval silence_min=if(isnull(last_seen),null(),round((now()-last_seen)/60,1)) | eval health=case(isnull(last_seen),"NEVER_SEEN", silence_min&gt;max_silence_minutes,"DATA_DOWN", isnotnull(median_events) AND events_24h&lt;(median_events-4*mad_events),"VOLUME_LOW", 1=1,"OK") | eval last_seen=strftime(last_seen,"%Y-%m-%d %H:%M") | table dataset_id ae_name domain index sourcetype declared_tier proposed_tier health events_24h last_seen technical_owner contract_status schema_version gate1_normalization gate2_detection gate3_soc enterprise_ready | sort declared_tier ae_name sourcetype</query><earliest>-1m</earliest></search>
-        <option name="count">50</option>
-        <option name="drilldown">cell</option>
-        <format type="color" field="health">
-          <colorPalette type="map">{"DATA_DOWN":#DC4E41,"VOLUME_LOW":#F8BE34,"OK":#53A051,"NEVER_SEEN":#8C8C8C}</colorPalette>
-        </format>
-        <format type="color" field="declared_tier">
-          <colorPalette type="map">{"Tier 0":#DC4E41,"Tier 1":#F8BE34,"Tier 2":#708794,"Tier 3":#8C8C8C,"Tier 4":#8C8C8C,"Tier 5":#5C6773}</colorPalette>
-        </format>
-        <drilldown>
-          <link target="_blank">/app/cyber_data_catalog/dc_dataset_detail?form.dataset_id=$row.dataset_id$</link>
-        </drilldown>
       </table>
     </panel>
   </row>
