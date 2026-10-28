@@ -1,4 +1,4 @@
-# Cyber Data & Detection Catalog - v0.5.2
+# Cyber Data & Detection Catalog - v0.5.3
 
 Install: copy `cyber_data_catalog/` to `$SPLUNK_HOME/etc/apps/` and restart, or
 upload the tarball via Apps -> Manage Apps -> Install app from file.
@@ -111,6 +111,17 @@ sourcetypes proposed for Tier 0. DC-21 only changes `proposed_tier`, so each sho
 and Tier 0 should apply to domain controllers only.
 
 ## Changelog
+### 0.5.3
+- DC-29, DC-30, DC-33: blank `schema_version` is treated as 1.0 and blank `cim_datamodel` as "none"
+  before `map` ("Did not find value for required attribute"); sourcetypes are quoted so names
+  with spaces work. DC-30 now checks only sourcetypes with a contracted schema, once per
+  sourcetype, and its coverage_pct is no longer always 100.
+- DC-35: one row per index+sourcetype, so the KV `_key` is a single value (the save failed when it
+  was a list of feed_ids); latency from a 1-in-100 sample of the last 15 minutes; adds
+  line-breaking errors.
+- DC-97: rewritten. `tstats` cannot aggregate `index`; a node's datasets now come from the
+  forwarders that connect to it plus events carrying its own hostname.
+
 ### 0.5.2 (continued)
 - AE names normalized in the dataset, infra node and contract master seeds (e.g. CORE -> Core,
   Atrius -> Atrius Health, Vpay -> VPay). `lookups/dc_ae_name_aliases_seed.csv` maps each old
