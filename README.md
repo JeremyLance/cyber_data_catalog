@@ -1,4 +1,4 @@
-# Cyber Data & Detection Catalog - v0.5.3
+# Cyber Data & Detection Catalog - v0.5.4
 
 Install: copy `cyber_data_catalog/` to `$SPLUNK_HOME/etc/apps/` and restart, or
 upload the tarball via Apps -> Manage Apps -> Install app from file.
@@ -110,7 +110,22 @@ sourcetypes proposed for Tier 0. DC-21 only changes `proposed_tier`, so each sho
 `XmlWinEventLog:Security` is deliberately not in the floor file: it covers every Windows host,
 and Tier 0 should apply to domain controllers only.
 
+## Contract master
+`lookups/dc_contracts_master.csv` is the contract lookup (`dc_contract_master`). Contract status
+(approved / pending CDE / no contract) is derived from it by the `dc_contract_state` macro, matching
+on sourcetype + index; "approved" means `cde_approval` is true.
+**Keep the repo copy current.** Installing the app package can replace the file on the search head
+with the packaged copy, so commit the updated CSV before every deploy. DC-37 rebuilds it from the
+GitHub pull every 2 hours when that pull returns rows (it never writes an empty file).
+
 ## Changelog
+### 0.5.4
+- Contract status now comes from the contract master (`dc_contract_state` macro) on Catalog Browse,
+  Impact Analysis and DC-50; the catalog's own `contract_status` field was never populated, so
+  the approved-contract tile always read 0%.
+- `dc_contract_master` now reads `dc_contracts_master.csv` (it pointed at `contracts_master.csv`).
+- DC-37 uses `override_if_empty=false`, so an empty GitHub pull cannot wipe the contract lookup.
+
 ### 0.5.3
 - DC-29, DC-30, DC-33: blank `schema_version` is treated as 1.0 and blank `cim_datamodel` as "none"
   before `map` ("Did not find value for required attribute"); sourcetypes are quoted so names

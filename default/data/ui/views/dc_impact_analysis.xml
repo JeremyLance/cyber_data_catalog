@@ -50,7 +50,7 @@
     <panel>
       <title>Tenants carrying this sourcetype</title>
       <table>
-        <search><query>| inputlookup dc_datasets_lookup | where sourcetype="$target$" | lookup dc_observed_lookup dataset_id OUTPUT last_seen events_24h | eval last_seen=strftime(last_seen,"%Y-%m-%d %H:%M") | table ae_name uhgid index declared_tier events_24h last_seen technical_owner schema_version contract_status | sort ae_name</query><earliest>-1m</earliest></search>
+        <search><query>| inputlookup dc_datasets_lookup | where sourcetype="$target$" | `dc_contract_state` | lookup dc_observed_lookup dataset_id OUTPUT last_seen events_24h | eval last_seen=strftime(last_seen,"%Y-%m-%d %H:%M") | table ae_name uhgid index declared_tier events_24h last_seen technical_owner schema_version contract_status | sort ae_name</query><earliest>-1m</earliest></search>
         <option name="count">25</option>
       </table>
     </panel>

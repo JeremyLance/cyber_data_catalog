@@ -5,10 +5,11 @@
   <!-- Loaded once per page view; every panel below post-processes these. -->
   <search id="catalog">
     <query>| inputlookup dc_datasets_lookup
+| `dc_contract_state`
 | lookup dc_observed_lookup dataset_id OUTPUT last_seen events_24h
 | lookup dc_baselines_lookup dataset_id OUTPUT median_events mad_events
 | `dc_default_silence`
-| fields dataset_id uhgid ae_name domain index sourcetype declared_tier proposed_tier status technical_owner contract_status schema_version gate1_normalization gate2_detection gate3_soc enterprise_ready last_seen events_24h median_events mad_events max_silence_minutes</query>
+| fields dataset_id uhgid ae_name domain index sourcetype declared_tier proposed_tier status technical_owner contract_status contract_ticket schema_version gate1_normalization gate2_detection gate3_soc enterprise_ready last_seen events_24h median_events mad_events max_silence_minutes</query>
     <earliest>-1m</earliest>
   </search>
   <search id="shadow">
@@ -70,7 +71,7 @@
     </panel>
     <panel>
       <single>
-        <title>Datasets with an approved contract</title>
+        <title>Datasets with a CDE-approved contract</title>
         <search base="catalog"><query>| where status="active" | search uhgid=$tenant|s$ domain=$domain|s$ declared_tier=$tier|s$ sourcetype=*$st$* | eval c=if(contract_status="approved",1,0) | stats sum(c) as ok, count as total | eval pct=if(total=0,0,round(ok/total*100,1)) | fields pct</query></search>
         <option name="unit">%</option>
         <option name="rangeColors">["0xdc4e41","0xf8be34","0x53a051"]</option>
@@ -97,12 +98,15 @@
 | eval silence_min=if(isnull(last_seen),null(),round((now()-last_seen)/60,1))
 | eval health=case(isnull(last_seen),"NEVER_SEEN", silence_min&gt;max_silence_minutes,"DATA_DOWN", isnotnull(median_events) AND events_24h&lt;(median_events-4*mad_events),"VOLUME_LOW", 1=1,"OK")
 | eval last_seen=strftime(last_seen,"%Y-%m-%d %H:%M")
-| table dataset_id ae_name domain index sourcetype declared_tier proposed_tier health events_24h last_seen technical_owner contract_status schema_version gate1_normalization gate2_detection gate3_soc enterprise_ready
+| table dataset_id ae_name domain index sourcetype declared_tier proposed_tier health events_24h last_seen technical_owner contract_status contract_ticket schema_version gate1_normalization gate2_detection gate3_soc enterprise_ready
 | sort declared_tier ae_name sourcetype</query></search>
         <option name="count">25</option>
         <option name="drilldown">cell</option>
         <format type="color" field="health">
           <colorPalette type="map">{"DATA_DOWN":#DC4E41,"VOLUME_LOW":#F8BE34,"OK":#53A051,"NEVER_SEEN":#8C8C8C}</colorPalette>
+        </format>
+        <format type="color" field="contract_status">
+          <colorPalette type="map">{"approved":#53A051,"pending CDE":#F8BE34,"no contract":#DC4E41}</colorPalette>
         </format>
         <format type="color" field="declared_tier">
           <colorPalette type="map">{"Tier 0":#DC4E41,"Tier 1":#F8BE34,"Tier 2":#708794,"Tier 3":#8C8C8C,"Tier 4":#8C8C8C,"Tier 5":#5C6773}</colorPalette>
