@@ -1,0 +1,277 @@
+<form version="1.1" theme="dark">
+  <label>CIM Coverage Command Center</label>
+  <description>Per-sourcetype CIM field coverage across all 8 security domains. Default view reads the nightly-built dc_cim_coverage_scorecard_lookup (DC-101, runs off-hours) for instant load. Switch "Mode" to Live to run tstats directly against the selected time range for ad-hoc / current-hour checks. Live mode uses one tstats per field (tstats cannot apply eval inside an aggregation, e.g. count(eval(...)), so each field's count is its own tstats WHERE filter), merged with append + a single stats pass instead of the original's per-field joins - same result, no relational join cost.</description>
+
+  <fieldset submitButton="true">
+    <input type="dropdown" token="mode">
+      <label>Mode</label>
+      <choice value="lookup">Fast (last nightly build)</choice>
+      <choice value="live">Live (query selected time range)</choice>
+      <default>lookup</default>
+    </input>
+    <input type="time" token="time_range" depends="$mode_live$">
+      <label>Time Range (live mode only)</label>
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="text" token="index_filter">
+      <label>Index Pattern</label>
+      <default>sec_*</default>
+    </input>
+    <input type="text" token="sourcetype_filter">
+      <label>Sourcetype Pattern</label>
+      <default>*</default>
+    </input>
+  </fieldset>
+
+  <!-- ====================================================
+       FAST PATH - reads the pre-built scorecard (DC-101)
+       ==================================================== -->
+  <row depends="$mode$" rejects="$mode_live$">
+    <panel>
+      <title>Coverage scorecard (as of last nightly build - DC-101)</title>
+      <table>
+        <search>
+          <query>| inputlookup dc_cim_coverage_scorecard_lookup.csv
+| search index=$index_filter$ sourcetype=$sourcetype_filter$
+| eval investigation_flag=case(
+    has_any_coverage=0,"NO CIM COVERAGE",
+    coverage_score&lt;20,"CRITICAL LOW",
+    coverage_score&lt;50,"VERY LOW",
+    coverage_score&lt;80,"LOW",
+    true(),"OK")
+| table domain index sourcetype total coverage_score investigation_flag checked
+| sort domain coverage_score</query>
+          <earliest>-1m</earliest>
+        </search>
+        <option name="count">100</option>
+        <format type="color" field="investigation_flag">
+          <colorPalette type="map">{"NO CIM COVERAGE":#DC4E41,"CRITICAL LOW":#DC4E41,"VERY LOW":#F1813F,"LOW":#F8BE34,"OK":#53A051}</colorPalette>
+        </format>
+      </table>
+    </panel>
+  </row>
+
+  <!-- ====================================================
+       LIVE PATH - one tstats per field (WHERE filter),
+       merged with append + stats (no joins)
+       ==================================================== -->
+  <row depends="$mode_live$">
+    <panel>
+      <title>Authentication (live)</title>
+      <table>
+        <search>
+          <query>| tstats summariesonly=true count as total from datamodel=Authentication where index=$index_filter$ sourcetype=$sourcetype_filter$ by index sourcetype
+| append [ | tstats summariesonly=true count as has_user from datamodel=Authentication where index=$index_filter$ sourcetype=$sourcetype_filter$ Authentication.user!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_action from datamodel=Authentication where index=$index_filter$ sourcetype=$sourcetype_filter$ Authentication.action!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_src from datamodel=Authentication where index=$index_filter$ sourcetype=$sourcetype_filter$ Authentication.src!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_dest from datamodel=Authentication where index=$index_filter$ sourcetype=$sourcetype_filter$ Authentication.dest!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_app from datamodel=Authentication where index=$index_filter$ sourcetype=$sourcetype_filter$ Authentication.app!="unknown" by index sourcetype ]
+| stats sum(total) as total, sum(has_user) as has_user, sum(has_action) as has_action, sum(has_src) as has_src, sum(has_dest) as has_dest, sum(has_app) as has_app by index sourcetype
+| eval pct_user=round(100*has_user/total,2), pct_action=round(100*has_action/total,2), pct_src=round(100*has_src/total,2), pct_dest=round(100*has_dest/total,2), pct_app=round(100*has_app/total,2)
+| eval coverage_score=round((pct_user*0.30)+(pct_action*0.25)+(pct_src*0.20)+(pct_dest*0.15)+(pct_app*0.10),2)
+| eval investigation_flag=case(coverage_score&lt;20,"CRITICAL LOW",coverage_score&lt;50,"VERY LOW",coverage_score&lt;80,"LOW",true(),"OK")
+| table index sourcetype total pct_user pct_action pct_src pct_dest pct_app coverage_score investigation_flag
+| sort coverage_score</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+    <panel>
+      <title>Alerts (live)</title>
+      <table>
+        <search>
+          <query>| tstats summariesonly=true count as total from datamodel=Alerts where index=$index_filter$ sourcetype=$sourcetype_filter$ by index sourcetype
+| append [ | tstats summariesonly=true count as has_signature from datamodel=Alerts where index=$index_filter$ sourcetype=$sourcetype_filter$ Alerts.signature!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_severity from datamodel=Alerts where index=$index_filter$ sourcetype=$sourcetype_filter$ Alerts.severity!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_outcome from datamodel=Alerts where index=$index_filter$ sourcetype=$sourcetype_filter$ Alerts.outcome!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_user from datamodel=Alerts where index=$index_filter$ sourcetype=$sourcetype_filter$ Alerts.user!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_dest from datamodel=Alerts where index=$index_filter$ sourcetype=$sourcetype_filter$ Alerts.dest!="unknown" by index sourcetype ]
+| stats sum(total) as total, sum(has_signature) as has_signature, sum(has_severity) as has_severity, sum(has_outcome) as has_outcome, sum(has_user) as has_user, sum(has_dest) as has_dest by index sourcetype
+| eval pct_signature=round(100*has_signature/total,2), pct_severity=round(100*has_severity/total,2), pct_outcome=round(100*has_outcome/total,2), pct_user=round(100*has_user/total,2), pct_dest=round(100*has_dest/total,2)
+| eval coverage_score=round((pct_signature*0.25)+(pct_severity*0.25)+(pct_outcome*0.25)+(pct_user*0.15)+(pct_dest*0.10),2)
+| eval investigation_flag=case(coverage_score&lt;20,"CRITICAL LOW",coverage_score&lt;50,"VERY LOW",coverage_score&lt;80,"LOW",true(),"OK")
+| table index sourcetype total pct_signature pct_severity pct_outcome pct_user pct_dest coverage_score investigation_flag
+| sort coverage_score</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+
+  <row depends="$mode_live$">
+    <panel>
+      <title>Network Traffic (live)</title>
+      <table>
+        <search>
+          <query>| tstats summariesonly=true count as total from datamodel=Network_Traffic.All_Traffic where index=$index_filter$ sourcetype=$sourcetype_filter$ by index sourcetype
+| append [ | tstats summariesonly=true count as has_src from datamodel=Network_Traffic.All_Traffic where index=$index_filter$ sourcetype=$sourcetype_filter$ All_Traffic.src!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_dest from datamodel=Network_Traffic.All_Traffic where index=$index_filter$ sourcetype=$sourcetype_filter$ All_Traffic.dest!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_action from datamodel=Network_Traffic.All_Traffic where index=$index_filter$ sourcetype=$sourcetype_filter$ All_Traffic.action!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_app from datamodel=Network_Traffic.All_Traffic where index=$index_filter$ sourcetype=$sourcetype_filter$ All_Traffic.app!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_bytes from datamodel=Network_Traffic.All_Traffic where index=$index_filter$ sourcetype=$sourcetype_filter$ All_Traffic.bytes&gt;0 by index sourcetype ]
+| stats sum(total) as total, sum(has_src) as has_src, sum(has_dest) as has_dest, sum(has_action) as has_action, sum(has_app) as has_app, sum(has_bytes) as has_bytes by index sourcetype
+| eval pct_src=round(100*has_src/total,2), pct_dest=round(100*has_dest/total,2), pct_action=round(100*has_action/total,2), pct_app=round(100*has_app/total,2), pct_bytes=round(100*has_bytes/total,2)
+| eval coverage_score=round((pct_src*0.25)+(pct_dest*0.25)+(pct_action*0.25)+(pct_app*0.15)+(pct_bytes*0.10),2)
+| eval investigation_flag=case(coverage_score&lt;20,"CRITICAL LOW",coverage_score&lt;50,"VERY LOW",coverage_score&lt;80,"LOW",true(),"OK")
+| table index sourcetype total pct_src pct_dest pct_action pct_app pct_bytes coverage_score investigation_flag
+| sort coverage_score</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+    <panel>
+      <title>Network Sessions (live)</title>
+      <table>
+        <search>
+          <query>| tstats summariesonly=true count as total from datamodel=Network_Sessions where index=$index_filter$ sourcetype=$sourcetype_filter$ by index sourcetype
+| append [ | tstats summariesonly=true count as has_src from datamodel=Network_Sessions where index=$index_filter$ sourcetype=$sourcetype_filter$ Network_Sessions.src!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_dest from datamodel=Network_Sessions where index=$index_filter$ sourcetype=$sourcetype_filter$ Network_Sessions.dest!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_action from datamodel=Network_Sessions where index=$index_filter$ sourcetype=$sourcetype_filter$ Network_Sessions.action!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_app from datamodel=Network_Sessions where index=$index_filter$ sourcetype=$sourcetype_filter$ Network_Sessions.app!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_bytes from datamodel=Network_Sessions where index=$index_filter$ sourcetype=$sourcetype_filter$ Network_Sessions.bytes&gt;0 by index sourcetype ]
+| stats sum(total) as total, sum(has_src) as has_src, sum(has_dest) as has_dest, sum(has_action) as has_action, sum(has_app) as has_app, sum(has_bytes) as has_bytes by index sourcetype
+| eval pct_src=round(100*has_src/total,2), pct_dest=round(100*has_dest/total,2), pct_action=round(100*has_action/total,2), pct_app=round(100*has_app/total,2), pct_bytes=round(100*has_bytes/total,2)
+| eval coverage_score=round((pct_src*0.25)+(pct_dest*0.25)+(pct_action*0.25)+(pct_app*0.15)+(pct_bytes*0.10),2)
+| eval investigation_flag=case(coverage_score&lt;20,"CRITICAL LOW",coverage_score&lt;50,"VERY LOW",coverage_score&lt;80,"LOW",true(),"OK")
+| table index sourcetype total pct_src pct_dest pct_action pct_app pct_bytes coverage_score investigation_flag
+| sort coverage_score</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+
+  <row depends="$mode_live$">
+    <panel>
+      <title>Intrusion Detection (live)</title>
+      <table>
+        <search>
+          <query>| tstats summariesonly=true count as total from datamodel=Intrusion_Detection where index=$index_filter$ sourcetype=$sourcetype_filter$ by index sourcetype
+| append [ | tstats summariesonly=true count as has_signature from datamodel=Intrusion_Detection where index=$index_filter$ sourcetype=$sourcetype_filter$ IDS.signature!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_severity from datamodel=Intrusion_Detection where index=$index_filter$ sourcetype=$sourcetype_filter$ IDS.severity!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_src from datamodel=Intrusion_Detection where index=$index_filter$ sourcetype=$sourcetype_filter$ IDS.src!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_dest from datamodel=Intrusion_Detection where index=$index_filter$ sourcetype=$sourcetype_filter$ IDS.dest!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_action from datamodel=Intrusion_Detection where index=$index_filter$ sourcetype=$sourcetype_filter$ IDS.action!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_app from datamodel=Intrusion_Detection where index=$index_filter$ sourcetype=$sourcetype_filter$ IDS.app!="unknown" by index sourcetype ]
+| stats sum(total) as total, sum(has_signature) as has_signature, sum(has_severity) as has_severity, sum(has_src) as has_src, sum(has_dest) as has_dest, sum(has_action) as has_action, sum(has_app) as has_app by index sourcetype
+| eval pct_signature=round(100*has_signature/total,2), pct_severity=round(100*has_severity/total,2), pct_src=round(100*has_src/total,2), pct_dest=round(100*has_dest/total,2), pct_action=round(100*has_action/total,2), pct_app=round(100*has_app/total,2)
+| eval coverage_score=round((pct_signature*0.25)+(pct_severity*0.25)+(pct_src*0.20)+(pct_dest*0.20)+(pct_action*0.05)+(pct_app*0.05),2)
+| eval investigation_flag=case(coverage_score&lt;20,"CRITICAL LOW",coverage_score&lt;50,"VERY LOW",coverage_score&lt;80,"LOW",true(),"OK")
+| table index sourcetype total pct_signature pct_severity pct_src pct_dest pct_action pct_app coverage_score investigation_flag
+| sort coverage_score</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+    <panel>
+      <title>Malware (live)</title>
+      <table>
+        <search>
+          <query>| tstats summariesonly=true count as total from datamodel=Malware where index=$index_filter$ sourcetype=$sourcetype_filter$ by index sourcetype
+| append [ | tstats summariesonly=true count as has_signature from datamodel=Malware where index=$index_filter$ sourcetype=$sourcetype_filter$ Malware.signature!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_severity from datamodel=Malware where index=$index_filter$ sourcetype=$sourcetype_filter$ Malware.severity!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_dest from datamodel=Malware where index=$index_filter$ sourcetype=$sourcetype_filter$ Malware.dest!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_file_name from datamodel=Malware where index=$index_filter$ sourcetype=$sourcetype_filter$ Malware.file_name!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_file_hash from datamodel=Malware where index=$index_filter$ sourcetype=$sourcetype_filter$ Malware.file_hash!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_user from datamodel=Malware where index=$index_filter$ sourcetype=$sourcetype_filter$ Malware.user!="unknown" by index sourcetype ]
+| stats sum(total) as total, sum(has_signature) as has_signature, sum(has_severity) as has_severity, sum(has_dest) as has_dest, sum(has_file_name) as has_file_name, sum(has_file_hash) as has_file_hash, sum(has_user) as has_user by index sourcetype
+| eval pct_signature=round(100*has_signature/total,2), pct_severity=round(100*has_severity/total,2), pct_dest=round(100*has_dest/total,2), pct_file_name=round(100*has_file_name/total,2), pct_file_hash=round(100*has_file_hash/total,2), pct_user=round(100*has_user/total,2)
+| eval coverage_score=round((pct_signature*0.25)+(pct_severity*0.25)+(pct_dest*0.20)+(pct_file_name*0.15)+(pct_file_hash*0.10)+(pct_user*0.05),2)
+| eval investigation_flag=case(coverage_score&lt;20,"CRITICAL LOW",coverage_score&lt;50,"VERY LOW",coverage_score&lt;80,"LOW",true(),"OK")
+| table index sourcetype total pct_signature pct_severity pct_dest pct_file_name pct_file_hash pct_user coverage_score investigation_flag
+| sort coverage_score</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+
+  <row depends="$mode_live$">
+    <panel>
+      <title>Endpoint Processes (live)</title>
+      <table>
+        <search>
+          <query>| tstats summariesonly=true count as total from datamodel=Endpoint.Processes where index=$index_filter$ sourcetype=$sourcetype_filter$ by index sourcetype
+| append [ | tstats summariesonly=true count as has_process from datamodel=Endpoint.Processes where index=$index_filter$ sourcetype=$sourcetype_filter$ Processes.process_name!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_dest from datamodel=Endpoint.Processes where index=$index_filter$ sourcetype=$sourcetype_filter$ Processes.dest!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_user from datamodel=Endpoint.Processes where index=$index_filter$ sourcetype=$sourcetype_filter$ Processes.user!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_parent from datamodel=Endpoint.Processes where index=$index_filter$ sourcetype=$sourcetype_filter$ Processes.parent_process_name!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_pid from datamodel=Endpoint.Processes where index=$index_filter$ sourcetype=$sourcetype_filter$ Processes.process_id!="unknown" by index sourcetype ]
+| stats sum(total) as total, sum(has_process) as has_process, sum(has_dest) as has_dest, sum(has_user) as has_user, sum(has_parent) as has_parent, sum(has_pid) as has_pid by index sourcetype
+| eval pct_process=round(100*has_process/total,2), pct_dest=round(100*has_dest/total,2), pct_user=round(100*has_user/total,2), pct_parent=round(100*has_parent/total,2), pct_pid=round(100*has_pid/total,2)
+| eval coverage_score=round((pct_process*0.25)+(pct_dest*0.25)+(pct_user*0.20)+(pct_parent*0.20)+(pct_pid*0.10),2)
+| eval investigation_flag=case(coverage_score&lt;20,"CRITICAL LOW",coverage_score&lt;50,"VERY LOW",coverage_score&lt;80,"LOW",true(),"OK")
+| table index sourcetype total pct_process pct_dest pct_user pct_parent pct_pid coverage_score investigation_flag
+| sort coverage_score</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+    <panel>
+      <title>Web (live)</title>
+      <table>
+        <search>
+          <query>| tstats summariesonly=true count as total from datamodel=Web where index=$index_filter$ sourcetype=$sourcetype_filter$ by index sourcetype
+| append [ | tstats summariesonly=true count as has_url from datamodel=Web where index=$index_filter$ sourcetype=$sourcetype_filter$ Web.url!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_dest from datamodel=Web where index=$index_filter$ sourcetype=$sourcetype_filter$ Web.dest!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_user from datamodel=Web where index=$index_filter$ sourcetype=$sourcetype_filter$ Web.user!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_method from datamodel=Web where index=$index_filter$ sourcetype=$sourcetype_filter$ Web.http_method!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_status from datamodel=Web where index=$index_filter$ sourcetype=$sourcetype_filter$ Web.status!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_src from datamodel=Web where index=$index_filter$ sourcetype=$sourcetype_filter$ Web.src!="unknown" by index sourcetype ]
+| stats sum(total) as total, sum(has_url) as has_url, sum(has_dest) as has_dest, sum(has_user) as has_user, sum(has_method) as has_method, sum(has_status) as has_status, sum(has_src) as has_src by index sourcetype
+| eval pct_url=round(100*has_url/total,2), pct_dest=round(100*has_dest/total,2), pct_user=round(100*has_user/total,2), pct_method=round(100*has_method/total,2), pct_status=round(100*has_status/total,2), pct_src=round(100*has_src/total,2)
+| eval coverage_score=round((pct_url*0.25)+(pct_dest*0.20)+(pct_user*0.15)+(pct_method*0.15)+(pct_status*0.15)+(pct_src*0.10),2)
+| eval investigation_flag=case(coverage_score&lt;20,"CRITICAL LOW",coverage_score&lt;50,"VERY LOW",coverage_score&lt;80,"LOW",true(),"OK")
+| table index sourcetype total pct_url pct_dest pct_user pct_method pct_status pct_src coverage_score investigation_flag
+| sort coverage_score</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+
+  <row depends="$mode_live$">
+    <panel>
+      <title>Change (live)</title>
+      <table>
+        <search>
+          <query>| tstats summariesonly=true count as total from datamodel=Change where index=$index_filter$ sourcetype=$sourcetype_filter$ by index sourcetype
+| append [ | tstats summariesonly=true count as has_object from datamodel=Change where index=$index_filter$ sourcetype=$sourcetype_filter$ Change.object!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_action from datamodel=Change where index=$index_filter$ sourcetype=$sourcetype_filter$ Change.action!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_result from datamodel=Change where index=$index_filter$ sourcetype=$sourcetype_filter$ Change.result!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_user from datamodel=Change where index=$index_filter$ sourcetype=$sourcetype_filter$ Change.user!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_dest from datamodel=Change where index=$index_filter$ sourcetype=$sourcetype_filter$ Change.dest!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_src from datamodel=Change where index=$index_filter$ sourcetype=$sourcetype_filter$ Change.src!="unknown" by index sourcetype ]
+| stats sum(total) as total, sum(has_object) as has_object, sum(has_action) as has_action, sum(has_result) as has_result, sum(has_user) as has_user, sum(has_dest) as has_dest, sum(has_src) as has_src by index sourcetype
+| eval pct_object=round(100*has_object/total,2), pct_action=round(100*has_action/total,2), pct_result=round(100*has_result/total,2), pct_user=round(100*has_user/total,2), pct_dest=round(100*has_dest/total,2), pct_src=round(100*has_src/total,2)
+| eval coverage_score=round((pct_object*0.25)+(pct_action*0.20)+(pct_result*0.20)+(pct_user*0.15)+(pct_dest*0.10)+(pct_src*0.10),2)
+| eval investigation_flag=case(coverage_score&lt;20,"CRITICAL LOW",coverage_score&lt;50,"VERY LOW",coverage_score&lt;80,"LOW",true(),"OK")
+| table index sourcetype total pct_object pct_action pct_result pct_user pct_dest pct_src coverage_score investigation_flag
+| sort coverage_score</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+</form>
