@@ -111,6 +111,13 @@ sourcetypes proposed for Tier 0. DC-21 only changes `proposed_tier`, so each sho
 and Tier 0 should apply to domain controllers only.
 
 ## Changelog
+### 0.5.2 (continued)
+- AE names normalized in the dataset, infra node and contract master seeds (e.g. CORE -> Core,
+  Atrius -> Atrius Health, Vpay -> VPay). `lookups/dc_ae_name_aliases_seed.csv` maps each old
+  spelling to its canonical name, and DC-37 applies it to the GitHub-synced contract master so
+  upstream spellings are normalized too. Re-run DC-00 and DC-00d to push the names into the KV Store.
+- `python.required = 3.9,3.13` on the GitHub-pull modular input and the setup REST handler.
+
 ### 0.5.2
 - CIM Coverage Command Center: new default tab reconciles every discovered sourcetype against
   the contract master, catalog and rejections (malformed, no contract, contracted with no data,
