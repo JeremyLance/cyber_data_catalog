@@ -36,13 +36,13 @@
     </panel>
   </row>
 
-  <row depends="$sourcetype$">
+  <row depends="$sourcetype$,$reason$,$performed_by$">
     <panel>
       <title>Reject this sourcetype (writes to dc_sourcetype_rejections - applies to every tenant)</title>
       <table>
         <search>
           <query>| makeresults
-| eval sourcetype="$sourcetype$", status="rejected", reason="$reason$", ticket="$ticket$", rejected_by="$performed_by$", rejected_date=now(), notes=""
+| eval sourcetype=$sourcetype|s$, status="rejected", reason=$reason|s$, ticket=$ticket|s$, rejected_by=$performed_by|s$, rejected_date=now(), notes=""
 | eval _key=sourcetype
 | table _key sourcetype status reason ticket rejected_by rejected_date notes
 | outputlookup append=t dc_sourcetype_rejections_lookup

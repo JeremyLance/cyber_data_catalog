@@ -13,14 +13,14 @@
     <panel>
       <single>
         <title>Knowledge objects impacted</title>
-        <search><query>| inputlookup dc_dependencies_lookup | where (dep_type="sourcetype" AND dep_value="$target$") OR (dep_type="dataset" AND like(dep_value,"%$target$")) | lookup dc_ko_lookup ko_id OUTPUT ko_tier ko_type enabled | where enabled="yes" | dedup ko_id | stats dc(ko_id) as objects_impacted, dc(eval(if(ko_tier="Tier 0",ko_id,null()))) as tier0_objects</query><earliest>-1m</earliest></search>
+        <search><query>| inputlookup dc_dependencies_lookup | where (dep_type="sourcetype" AND dep_value="$target$") OR (dep_type="dataset" AND like(dep_value,"%|$target$")) | lookup dc_ko_lookup ko_id OUTPUT ko_tier ko_type enabled | where enabled="yes" | dedup ko_id | stats dc(ko_id) as objects_impacted, dc(eval(if(ko_tier="Tier 0",ko_id,null()))) as tier0_objects</query><earliest>-1m</earliest></search>
         <option name="field">objects_impacted</option>
       </single>
     </panel>
     <panel>
       <single>
         <title>Tier 0 objects impacted</title>
-        <search><query>| inputlookup dc_dependencies_lookup | where (dep_type="sourcetype" AND dep_value="$target$") OR (dep_type="dataset" AND like(dep_value,"%$target$")) | lookup dc_ko_lookup ko_id OUTPUT ko_tier ko_type enabled | where enabled="yes" | dedup ko_id | stats dc(ko_id) as objects_impacted, dc(eval(if(ko_tier="Tier 0",ko_id,null()))) as tier0_objects</query><earliest>-1m</earliest></search>
+        <search><query>| inputlookup dc_dependencies_lookup | where (dep_type="sourcetype" AND dep_value="$target$") OR (dep_type="dataset" AND like(dep_value,"%|$target$")) | lookup dc_ko_lookup ko_id OUTPUT ko_tier ko_type enabled | where enabled="yes" | dedup ko_id | stats dc(ko_id) as objects_impacted, dc(eval(if(ko_tier="Tier 0",ko_id,null()))) as tier0_objects</query><earliest>-1m</earliest></search>
         <option name="field">tier0_objects</option>
         <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
         <option name="rangeValues">[0,1]</option>
@@ -30,7 +30,7 @@
     <panel>
       <title>Impact by object type and tier</title>
       <chart>
-        <search><query>| inputlookup dc_dependencies_lookup | where (dep_type="sourcetype" AND dep_value="$target$") OR (dep_type="dataset" AND like(dep_value,"%$target$")) | lookup dc_ko_lookup ko_id OUTPUT ko_tier ko_type enabled | where enabled="yes" | dedup ko_id | chart count over ko_type by ko_tier</query><earliest>-1m</earliest></search>
+        <search><query>| inputlookup dc_dependencies_lookup | where (dep_type="sourcetype" AND dep_value="$target$") OR (dep_type="dataset" AND like(dep_value,"%|$target$")) | lookup dc_ko_lookup ko_id OUTPUT ko_tier ko_type enabled | where enabled="yes" | dedup ko_id | chart count over ko_type by ko_tier</query><earliest>-1m</earliest></search>
         <option name="charting.chart">bar</option>
         <option name="charting.chart.stackMode">stacked</option>
       </chart>
@@ -49,7 +49,7 @@
     <panel>
       <title>Every knowledge object that consumes it</title>
       <table>
-        <search><query>| inputlookup dc_dependencies_lookup | where (dep_type="sourcetype" AND dep_value="$target$") OR (dep_type="dataset" AND like(dep_value,"%$target$")) | lookup dc_ko_lookup ko_id OUTPUT ko_name ko_type ko_tier owner app enabled github_repo mitre_technique run_count_30d | where enabled="yes" | dedup ko_id | table ko_tier ko_type ko_name app owner github_repo mitre_technique run_count_30d discovery_method confidence | sort ko_tier - run_count_30d</query><earliest>-1m</earliest></search>
+        <search><query>| inputlookup dc_dependencies_lookup | where (dep_type="sourcetype" AND dep_value="$target$") OR (dep_type="dataset" AND like(dep_value,"%|$target$")) | lookup dc_ko_lookup ko_id OUTPUT ko_name ko_type ko_tier owner app enabled github_repo mitre_technique run_count_30d | where enabled="yes" | dedup ko_id | table ko_tier ko_type ko_name app owner github_repo mitre_technique run_count_30d discovery_method confidence | sort ko_tier - run_count_30d</query><earliest>-1m</earliest></search>
         <option name="count">50</option>
       </table>
     </panel>

@@ -25,6 +25,8 @@
       <choice value="Tier 1">Tier 1</choice>
       <choice value="Tier 2">Tier 2</choice>
       <choice value="Tier 3">Tier 3</choice>
+      <choice value="Tier 4">Tier 4</choice>
+      <choice value="Tier 5">Tier 5 (awaiting CDE)</choice>
       <default>*</default>
     </input>
     <input type="text" token="st" searchWhenChanged="true">
@@ -148,7 +150,7 @@
           <colorPalette type="map">{"DATA_DOWN":#DC4E41,"VOLUME_LOW":#F8BE34,"OK":#53A051,"NEVER_SEEN":#8C8C8C}</colorPalette>
         </format>
         <format type="color" field="declared_tier">
-          <colorPalette type="map">{"Tier 0":#DC4E41,"Tier 1":#F8BE34,"Tier 2":#708794,"Tier 3":#8C8C8C}</colorPalette>
+          <colorPalette type="map">{"Tier 0":#DC4E41,"Tier 1":#F8BE34,"Tier 2":#708794,"Tier 3":#8C8C8C,"Tier 4":#8C8C8C,"Tier 5":#5C6773}</colorPalette>
         </format>
         <drilldown>
           <link target="_blank">/app/cyber_data_catalog/dc_dataset_detail?form.dataset_id=$row.dataset_id$</link>
