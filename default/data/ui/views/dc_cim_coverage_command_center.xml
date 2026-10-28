@@ -1,40 +1,235 @@
 <form version="1.1" theme="dark">
   <label>CIM Coverage Command Center</label>
-  <description>Per-sourcetype CIM field coverage across all 8 security domains. Default view reads the nightly-built dc_cim_coverage_scorecard_lookup (DC-101, runs off-hours) for instant load. Switch "Mode" to Live to run tstats directly against the selected time range for ad-hoc / current-hour checks. Live mode uses one tstats per field (tstats cannot apply eval inside an aggregation, e.g. count(eval(...)), so each field's count is its own tstats WHERE filter), merged with append + a single stats pass instead of the original's per-field joins - same result, no relational join cost.</description>
+  <description>SIEM validation view: every sourcetype a tenant sends, whether it is contracted and cataloged, and how well it is CIM-normalized. Open the "How to read this" tab for what the flags and percentages mean.</description>
+
+  <init>
+    <set token="mode_fast">true</set>
+    <set token="tab_recon">true</set>
+  </init>
 
   <fieldset submitButton="true">
-    <input type="dropdown" token="mode">
-      <label>Mode</label>
-      <choice value="lookup">Fast (last nightly build)</choice>
+    <input type="dropdown" token="index_filter">
+      <label>Tenant</label>
+      <choice value="sec_*">All tenants</choice>
+      <default>sec_*</default>
+      <fieldForLabel>label</fieldForLabel>
+      <fieldForValue>index_pattern</fieldForValue>
+      <search>
+        <query>| inputlookup dc_datasets_lookup
+| stats first(ae_name) as ae_name by uhgid
+| eval index_pattern=if(uhgid="core","sec_*_core","sec_*_".uhgid), label=ae_name." (".uhgid.")"
+| sort ae_name</query>
+      </search>
+    </input>
+    <input type="text" token="sourcetype_filter">
+      <label>Sourcetype pattern</label>
+      <default>*</default>
+    </input>
+    <input type="dropdown" token="mode" depends="$tab_cim$">
+      <label>CIM coverage mode</label>
+      <choice value="lookup">Fast (last DC-101 run, max 4h old)</choice>
       <choice value="live">Live (query selected time range)</choice>
       <default>lookup</default>
+      <change>
+        <condition value="live">
+          <set token="mode_live">true</set>
+          <unset token="mode_fast"></unset>
+        </condition>
+        <condition>
+          <set token="mode_fast">true</set>
+          <unset token="mode_live"></unset>
+        </condition>
+      </change>
     </input>
-    <input type="time" token="time_range" depends="$mode_live$">
-      <label>Time Range (live mode only)</label>
+    <input type="time" token="time_range" depends="$tab_cim$,$mode_live$">
+      <label>Time range (live mode only)</label>
       <default>
         <earliest>-24h@h</earliest>
         <latest>now</latest>
       </default>
     </input>
-    <input type="text" token="index_filter">
-      <label>Index Pattern</label>
-      <default>sec_*</default>
-    </input>
-    <input type="text" token="sourcetype_filter">
-      <label>Sourcetype Pattern</label>
-      <default>*</default>
-    </input>
   </fieldset>
 
   <!-- ====================================================
-       FAST PATH - reads the pre-built scorecard (DC-101)
+       RECONCILIATION BASE SEARCH
+       Every sourcetype seen in the last 7 days PLUS every
+       sourcetype in the contract master for the tenant, so
+       gaps show in both directions.
        ==================================================== -->
-  <row depends="$mode$" rejects="$mode_live$">
+  <search id="recon">
+    <query>| tstats count as events_7d, max(_time) as last_seen where `dc_scope_indexes` index=$index_filter$ sourcetype=$sourcetype_filter$ earliest=-7d by index sourcetype
+| eval discovered=1
+| append [ | inputlookup dc_contract_master | eval index=lower(index) | search index=$index_filter$ sourcetype=$sourcetype_filter$ | fields index sourcetype ]
+| stats sum(events_7d) as events_7d, max(last_seen) as last_seen, max(discovered) as discovered by index sourcetype
+| fillnull value=0 discovered events_7d
+| `dc_key`
+| `dc_valid_sourcetype(sourcetype)`
+| lookup dc_sourcetype_rejections_lookup sourcetype OUTPUT status as reject_status
+| lookup dc_datasets_lookup dataset_id OUTPUT status as catalog_status, cim_datamodel as catalog_cim
+| lookup dc_datasets_lookup uhgid OUTPUT ae_name
+| eval ae_name=mvindex(ae_name,0)
+| lookup dc_contract_master sourcetype index OUTPUT contract_issue as contract_ticket, cde_approval, datamodels as contract_cim
+| lookup dc_contract_master sourcetype OUTPUT contract_issue as other_ticket
+| join type=left index sourcetype [ | inputlookup dc_cim_coverage_scorecard_lookup | stats max(coverage_score) as cim_score, values(domain) as cim_models_scored by index sourcetype ]
+| eval sourcetype_check=case(sourcetype_valid="no","MALFORMED", reject_status="rejected","REJECTED", 1=1,"ok")
+| eval in_catalog=if(isnotnull(catalog_status),"yes","no")
+| eval contract=case(isnotnull(contract_ticket),"CONTRACTED", isnotnull(other_ticket),"OTHER TENANT ONLY", 1=1,"NO CONTRACT")
+| eval contract_ticket=coalesce(mvindex(contract_ticket,0), mvindex(other_ticket,0))
+| eval cde_approved=case(contract="NO CONTRACT","", lower(mvindex(cde_approval,0))="true","yes", 1=1,"pending")
+| eval expected_cim=coalesce(if(contract_cim="",null(),mvindex(contract_cim,0)), if(catalog_cim="",null(),catalog_cim))
+| eval cim_flag=case(isnull(cim_score),"NOT IN SCORED MODELS", cim_score=0,"NO CIM COVERAGE", cim_score&lt;20,"CRITICAL LOW", cim_score&lt;50,"VERY LOW", cim_score&lt;80,"LOW", 1=1,"OK")
+| eval gap=case(
+    sourcetype_check="MALFORMED","Fix sourcetype at the source (props.conf / HEC override)",
+    sourcetype_check="REJECTED","Rejected - AE to stop sending",
+    discovered=0,"Contracted but no data in 7 days - confirm onboarding",
+    contract="NO CONTRACT","Ingested with no contract - create a contract",
+    contract="OTHER TENANT ONLY","Contracted for another tenant only - extend the contract",
+    in_catalog="no","Contracted but not cataloged - add to the catalog seed",
+    cim_flag IN ("NO CIM COVERAGE","CRITICAL LOW","VERY LOW"),"CIM normalization gap",
+    cim_flag="NOT IN SCORED MODELS" AND isnotnull(expected_cim),"Check CIM mapping - expected ".expected_cim,
+    cde_approved="pending","Awaiting CDE approval",
+    1=1,"OK")
+| eval priority=case(gap="OK","OK", match(gap,"^(Fix|Rejected|Ingested)"),"HIGH", 1=1,"MEDIUM")
+| eval last_seen=if(discovered=1,strftime(last_seen,"%Y-%m-%d %H:%M"),"never (7d)"), cim_models_scored=mvjoin(cim_models_scored,", ")
+| fields uhgid index sourcetype ae_name priority events_7d last_seen discovered sourcetype_check in_catalog contract contract_ticket cde_approved expected_cim cim_models_scored cim_score cim_flag gap</query>
+    <earliest>-7d</earliest>
+    <latest>now</latest>
+  </search>
+
+  <row>
     <panel>
-      <title>Coverage scorecard (as of last nightly build - DC-101)</title>
+      <single>
+        <title>Sourcetypes discovered (7 days)</title>
+        <search base="recon"><query>| where discovered=1 | stats count</query></search>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Ingested with no contract</title>
+        <search base="recon"><query>| where discovered=1 AND contract="NO CONTRACT" AND sourcetype_check="ok" | stats count</query></search>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[0,5]</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Contracted, no data seen</title>
+        <search base="recon"><query>| where discovered=0 | stats count</query></search>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x53a051","0xf8be34"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Malformed or rejected sourcetypes</title>
+        <search base="recon"><query>| where sourcetype_check!="ok" | stats count</query></search>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x53a051","0xdc4e41"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>CIM normalization gaps</title>
+        <search base="recon"><query>| where cim_flag IN ("NO CIM COVERAGE","CRITICAL LOW","VERY LOW") | stats count</query></search>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[0,5]</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <input type="link" token="tab" searchWhenChanged="true">
+        <label></label>
+        <choice value="recon">Sourcetype reconciliation</choice>
+        <choice value="cim">CIM field coverage</choice>
+        <choice value="help">How to read this</choice>
+        <default>recon</default>
+        <change>
+          <condition value="recon">
+            <set token="tab_recon">true</set>
+            <unset token="tab_cim"></unset>
+            <unset token="tab_help"></unset>
+          </condition>
+          <condition value="cim">
+            <set token="tab_cim">true</set>
+            <unset token="tab_recon"></unset>
+            <unset token="tab_help"></unset>
+          </condition>
+          <condition value="help">
+            <set token="tab_help">true</set>
+            <unset token="tab_recon"></unset>
+            <unset token="tab_cim"></unset>
+          </condition>
+        </change>
+      </input>
+    </panel>
+  </row>
+
+  <!-- ====================================================
+       TAB 1 - every discovered and contracted sourcetype
+       ==================================================== -->
+  <row depends="$tab_recon$">
+    <panel>
+      <title>Every sourcetype discovered or contracted - worst gaps first</title>
+      <table>
+        <search base="recon">
+          <query>| eval gap_rank=case(sourcetype_check!="ok",1, contract="NO CONTRACT",2, contract="OTHER TENANT ONLY",3, discovered=0,4, in_catalog="no",5, gap="CIM normalization gap",6, gap="OK",9, 1=1,7)
+| sort gap_rank - events_7d
+| table priority ae_name index sourcetype events_7d last_seen sourcetype_check in_catalog contract contract_ticket cde_approved expected_cim cim_models_scored cim_score cim_flag gap</query>
+        </search>
+        <option name="count">50</option>
+        <option name="drilldown">none</option>
+        <format type="color" field="sourcetype_check">
+          <colorPalette type="map">{"MALFORMED":#DC4E41,"REJECTED":#F1813F,"ok":#53A051}</colorPalette>
+        </format>
+        <format type="color" field="contract">
+          <colorPalette type="map">{"NO CONTRACT":#DC4E41,"OTHER TENANT ONLY":#F8BE34,"CONTRACTED":#53A051}</colorPalette>
+        </format>
+        <format type="color" field="cde_approved">
+          <colorPalette type="map">{"yes":#53A051,"pending":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="cim_flag">
+          <colorPalette type="map">{"NO CIM COVERAGE":#DC4E41,"CRITICAL LOW":#DC4E41,"VERY LOW":#F1813F,"LOW":#F8BE34,"OK":#53A051,"NOT IN SCORED MODELS":#708794}</colorPalette>
+        </format>
+        <format type="color" field="priority">
+          <colorPalette type="map">{"HIGH":#DC4E41,"MEDIUM":#F8BE34,"OK":#53A051}</colorPalette>
+        </format>
+      </table>
+    </panel>
+  </row>
+  <row depends="$tab_recon$">
+    <panel>
+      <title>Gaps by tenant</title>
+      <chart>
+        <search base="recon">
+          <query>| where gap!="OK" | eval tenant=coalesce(ae_name,uhgid) | eval gap_type=case(match(gap,"^Fix|^Rejected"),"Sourcetype problem", match(gap,"^Ingested"),"No contract", match(gap,"^Contracted for another"),"Contract for another tenant", match(gap,"^Contracted but no data"),"Contracted, no data", match(gap,"^Contracted but not cataloged"),"Not cataloged", match(gap,"CIM"),"CIM gap", 1=1,"Awaiting CDE")
+| chart count over tenant by gap_type</query>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.legend.placement">bottom</option>
+      </chart>
+    </panel>
+  </row>
+
+  <!-- ====================================================
+       TAB 2 - CIM field coverage (fast and live)
+       ==================================================== -->
+  <row depends="$mode_fast$,$tab_cim$">
+    <panel>
+      <title>CIM field coverage scorecard (as of the last DC-101 run, every 4 hours)</title>
       <table>
         <search>
-          <query>| inputlookup dc_cim_coverage_scorecard_lookup.csv
+          <query>| inputlookup dc_cim_coverage_scorecard_lookup
 | search index=$index_filter$ sourcetype=$sourcetype_filter$
 | eval investigation_flag=case(
     has_any_coverage=0,"NO CIM COVERAGE",
@@ -42,6 +237,7 @@
     coverage_score&lt;50,"VERY LOW",
     coverage_score&lt;80,"LOW",
     true(),"OK")
+| eval checked=strftime(checked,"%Y-%m-%d %H:%M")
 | table domain index sourcetype total coverage_score investigation_flag checked
 | sort domain coverage_score</query>
           <earliest>-1m</earliest>
@@ -58,7 +254,7 @@
        LIVE PATH - one tstats per field (WHERE filter),
        merged with append + stats (no joins)
        ==================================================== -->
-  <row depends="$mode_live$">
+  <row depends="$mode_live$,$tab_cim$">
     <panel>
       <title>Authentication (live)</title>
       <table>
@@ -105,7 +301,7 @@
     </panel>
   </row>
 
-  <row depends="$mode_live$">
+  <row depends="$mode_live$,$tab_cim$">
     <panel>
       <title>Network Traffic (live)</title>
       <table>
@@ -133,16 +329,16 @@
       <table>
         <search>
           <query>| tstats summariesonly=true count as total from datamodel=Network_Sessions where index=$index_filter$ sourcetype=$sourcetype_filter$ by index sourcetype
-| append [ | tstats summariesonly=true count as has_src from datamodel=Network_Sessions where index=$index_filter$ sourcetype=$sourcetype_filter$ Network_Sessions.src!="unknown" by index sourcetype ]
-| append [ | tstats summariesonly=true count as has_dest from datamodel=Network_Sessions where index=$index_filter$ sourcetype=$sourcetype_filter$ Network_Sessions.dest!="unknown" by index sourcetype ]
-| append [ | tstats summariesonly=true count as has_action from datamodel=Network_Sessions where index=$index_filter$ sourcetype=$sourcetype_filter$ Network_Sessions.action!="unknown" by index sourcetype ]
-| append [ | tstats summariesonly=true count as has_app from datamodel=Network_Sessions where index=$index_filter$ sourcetype=$sourcetype_filter$ Network_Sessions.app!="unknown" by index sourcetype ]
-| append [ | tstats summariesonly=true count as has_bytes from datamodel=Network_Sessions where index=$index_filter$ sourcetype=$sourcetype_filter$ Network_Sessions.bytes&gt;0 by index sourcetype ]
-| stats sum(total) as total, sum(has_src) as has_src, sum(has_dest) as has_dest, sum(has_action) as has_action, sum(has_app) as has_app, sum(has_bytes) as has_bytes by index sourcetype
-| eval pct_src=round(100*has_src/total,2), pct_dest=round(100*has_dest/total,2), pct_action=round(100*has_action/total,2), pct_app=round(100*has_app/total,2), pct_bytes=round(100*has_bytes/total,2)
-| eval coverage_score=round((pct_src*0.25)+(pct_dest*0.25)+(pct_action*0.25)+(pct_app*0.15)+(pct_bytes*0.10),2)
+| append [ | tstats summariesonly=true count as has_src from datamodel=Network_Sessions where index=$index_filter$ sourcetype=$sourcetype_filter$ All_Sessions.src_ip!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_dest from datamodel=Network_Sessions where index=$index_filter$ sourcetype=$sourcetype_filter$ All_Sessions.dest_ip!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_action from datamodel=Network_Sessions where index=$index_filter$ sourcetype=$sourcetype_filter$ All_Sessions.action!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_user from datamodel=Network_Sessions where index=$index_filter$ sourcetype=$sourcetype_filter$ All_Sessions.user!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_signature from datamodel=Network_Sessions where index=$index_filter$ sourcetype=$sourcetype_filter$ All_Sessions.signature!="unknown" by index sourcetype ]
+| stats sum(total) as total, sum(has_src) as has_src, sum(has_dest) as has_dest, sum(has_action) as has_action, sum(has_user) as has_user, sum(has_signature) as has_signature by index sourcetype
+| eval pct_src=round(100*has_src/total,2), pct_dest=round(100*has_dest/total,2), pct_action=round(100*has_action/total,2), pct_user=round(100*has_user/total,2), pct_signature=round(100*has_signature/total,2)
+| eval coverage_score=round((pct_src*0.25)+(pct_dest*0.25)+(pct_action*0.25)+(pct_user*0.15)+(pct_signature*0.10),2)
 | eval investigation_flag=case(coverage_score&lt;20,"CRITICAL LOW",coverage_score&lt;50,"VERY LOW",coverage_score&lt;80,"LOW",true(),"OK")
-| table index sourcetype total pct_src pct_dest pct_action pct_app pct_bytes coverage_score investigation_flag
+| table index sourcetype total pct_src pct_dest pct_action pct_user pct_signature coverage_score investigation_flag
 | sort coverage_score</query>
           <earliest>$time_range.earliest$</earliest>
           <latest>$time_range.latest$</latest>
@@ -152,23 +348,23 @@
     </panel>
   </row>
 
-  <row depends="$mode_live$">
+  <row depends="$mode_live$,$tab_cim$">
     <panel>
       <title>Intrusion Detection (live)</title>
       <table>
         <search>
           <query>| tstats summariesonly=true count as total from datamodel=Intrusion_Detection where index=$index_filter$ sourcetype=$sourcetype_filter$ by index sourcetype
-| append [ | tstats summariesonly=true count as has_signature from datamodel=Intrusion_Detection where index=$index_filter$ sourcetype=$sourcetype_filter$ IDS.signature!="unknown" by index sourcetype ]
-| append [ | tstats summariesonly=true count as has_severity from datamodel=Intrusion_Detection where index=$index_filter$ sourcetype=$sourcetype_filter$ IDS.severity!="unknown" by index sourcetype ]
-| append [ | tstats summariesonly=true count as has_src from datamodel=Intrusion_Detection where index=$index_filter$ sourcetype=$sourcetype_filter$ IDS.src!="unknown" by index sourcetype ]
-| append [ | tstats summariesonly=true count as has_dest from datamodel=Intrusion_Detection where index=$index_filter$ sourcetype=$sourcetype_filter$ IDS.dest!="unknown" by index sourcetype ]
-| append [ | tstats summariesonly=true count as has_action from datamodel=Intrusion_Detection where index=$index_filter$ sourcetype=$sourcetype_filter$ IDS.action!="unknown" by index sourcetype ]
-| append [ | tstats summariesonly=true count as has_app from datamodel=Intrusion_Detection where index=$index_filter$ sourcetype=$sourcetype_filter$ IDS.app!="unknown" by index sourcetype ]
-| stats sum(total) as total, sum(has_signature) as has_signature, sum(has_severity) as has_severity, sum(has_src) as has_src, sum(has_dest) as has_dest, sum(has_action) as has_action, sum(has_app) as has_app by index sourcetype
-| eval pct_signature=round(100*has_signature/total,2), pct_severity=round(100*has_severity/total,2), pct_src=round(100*has_src/total,2), pct_dest=round(100*has_dest/total,2), pct_action=round(100*has_action/total,2), pct_app=round(100*has_app/total,2)
-| eval coverage_score=round((pct_signature*0.25)+(pct_severity*0.25)+(pct_src*0.20)+(pct_dest*0.20)+(pct_action*0.05)+(pct_app*0.05),2)
+| append [ | tstats summariesonly=true count as has_signature from datamodel=Intrusion_Detection where index=$index_filter$ sourcetype=$sourcetype_filter$ IDS_Attacks.signature!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_severity from datamodel=Intrusion_Detection where index=$index_filter$ sourcetype=$sourcetype_filter$ IDS_Attacks.severity!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_src from datamodel=Intrusion_Detection where index=$index_filter$ sourcetype=$sourcetype_filter$ IDS_Attacks.src!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_dest from datamodel=Intrusion_Detection where index=$index_filter$ sourcetype=$sourcetype_filter$ IDS_Attacks.dest!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_action from datamodel=Intrusion_Detection where index=$index_filter$ sourcetype=$sourcetype_filter$ IDS_Attacks.action!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_vendor_product from datamodel=Intrusion_Detection where index=$index_filter$ sourcetype=$sourcetype_filter$ IDS_Attacks.vendor_product!="unknown" by index sourcetype ]
+| stats sum(total) as total, sum(has_signature) as has_signature, sum(has_severity) as has_severity, sum(has_src) as has_src, sum(has_dest) as has_dest, sum(has_action) as has_action, sum(has_vendor_product) as has_vendor_product by index sourcetype
+| eval pct_signature=round(100*has_signature/total,2), pct_severity=round(100*has_severity/total,2), pct_src=round(100*has_src/total,2), pct_dest=round(100*has_dest/total,2), pct_action=round(100*has_action/total,2), pct_vendor_product=round(100*has_vendor_product/total,2)
+| eval coverage_score=round((pct_signature*0.25)+(pct_severity*0.25)+(pct_src*0.20)+(pct_dest*0.20)+(pct_action*0.05)+(pct_vendor_product*0.05),2)
 | eval investigation_flag=case(coverage_score&lt;20,"CRITICAL LOW",coverage_score&lt;50,"VERY LOW",coverage_score&lt;80,"LOW",true(),"OK")
-| table index sourcetype total pct_signature pct_severity pct_src pct_dest pct_action pct_app coverage_score investigation_flag
+| table index sourcetype total pct_signature pct_severity pct_src pct_dest pct_action pct_vendor_product coverage_score investigation_flag
 | sort coverage_score</query>
           <earliest>$time_range.earliest$</earliest>
           <latest>$time_range.latest$</latest>
@@ -181,12 +377,12 @@
       <table>
         <search>
           <query>| tstats summariesonly=true count as total from datamodel=Malware where index=$index_filter$ sourcetype=$sourcetype_filter$ by index sourcetype
-| append [ | tstats summariesonly=true count as has_signature from datamodel=Malware where index=$index_filter$ sourcetype=$sourcetype_filter$ Malware.signature!="unknown" by index sourcetype ]
-| append [ | tstats summariesonly=true count as has_severity from datamodel=Malware where index=$index_filter$ sourcetype=$sourcetype_filter$ Malware.severity!="unknown" by index sourcetype ]
-| append [ | tstats summariesonly=true count as has_dest from datamodel=Malware where index=$index_filter$ sourcetype=$sourcetype_filter$ Malware.dest!="unknown" by index sourcetype ]
-| append [ | tstats summariesonly=true count as has_file_name from datamodel=Malware where index=$index_filter$ sourcetype=$sourcetype_filter$ Malware.file_name!="unknown" by index sourcetype ]
-| append [ | tstats summariesonly=true count as has_file_hash from datamodel=Malware where index=$index_filter$ sourcetype=$sourcetype_filter$ Malware.file_hash!="unknown" by index sourcetype ]
-| append [ | tstats summariesonly=true count as has_user from datamodel=Malware where index=$index_filter$ sourcetype=$sourcetype_filter$ Malware.user!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_signature from datamodel=Malware where index=$index_filter$ sourcetype=$sourcetype_filter$ Malware_Attacks.signature!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_severity from datamodel=Malware where index=$index_filter$ sourcetype=$sourcetype_filter$ Malware_Attacks.severity!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_dest from datamodel=Malware where index=$index_filter$ sourcetype=$sourcetype_filter$ Malware_Attacks.dest!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_file_name from datamodel=Malware where index=$index_filter$ sourcetype=$sourcetype_filter$ Malware_Attacks.file_name!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_file_hash from datamodel=Malware where index=$index_filter$ sourcetype=$sourcetype_filter$ Malware_Attacks.file_hash!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_user from datamodel=Malware where index=$index_filter$ sourcetype=$sourcetype_filter$ Malware_Attacks.user!="unknown" by index sourcetype ]
 | stats sum(total) as total, sum(has_signature) as has_signature, sum(has_severity) as has_severity, sum(has_dest) as has_dest, sum(has_file_name) as has_file_name, sum(has_file_hash) as has_file_hash, sum(has_user) as has_user by index sourcetype
 | eval pct_signature=round(100*has_signature/total,2), pct_severity=round(100*has_severity/total,2), pct_dest=round(100*has_dest/total,2), pct_file_name=round(100*has_file_name/total,2), pct_file_hash=round(100*has_file_hash/total,2), pct_user=round(100*has_user/total,2)
 | eval coverage_score=round((pct_signature*0.25)+(pct_severity*0.25)+(pct_dest*0.20)+(pct_file_name*0.15)+(pct_file_hash*0.10)+(pct_user*0.05),2)
@@ -201,7 +397,7 @@
     </panel>
   </row>
 
-  <row depends="$mode_live$">
+  <row depends="$mode_live$,$tab_cim$">
     <panel>
       <title>Endpoint Processes (live)</title>
       <table>
@@ -249,18 +445,18 @@
     </panel>
   </row>
 
-  <row depends="$mode_live$">
+  <row depends="$mode_live$,$tab_cim$">
     <panel>
       <title>Change (live)</title>
       <table>
         <search>
           <query>| tstats summariesonly=true count as total from datamodel=Change where index=$index_filter$ sourcetype=$sourcetype_filter$ by index sourcetype
-| append [ | tstats summariesonly=true count as has_object from datamodel=Change where index=$index_filter$ sourcetype=$sourcetype_filter$ Change.object!="unknown" by index sourcetype ]
-| append [ | tstats summariesonly=true count as has_action from datamodel=Change where index=$index_filter$ sourcetype=$sourcetype_filter$ Change.action!="unknown" by index sourcetype ]
-| append [ | tstats summariesonly=true count as has_result from datamodel=Change where index=$index_filter$ sourcetype=$sourcetype_filter$ Change.result!="unknown" by index sourcetype ]
-| append [ | tstats summariesonly=true count as has_user from datamodel=Change where index=$index_filter$ sourcetype=$sourcetype_filter$ Change.user!="unknown" by index sourcetype ]
-| append [ | tstats summariesonly=true count as has_dest from datamodel=Change where index=$index_filter$ sourcetype=$sourcetype_filter$ Change.dest!="unknown" by index sourcetype ]
-| append [ | tstats summariesonly=true count as has_src from datamodel=Change where index=$index_filter$ sourcetype=$sourcetype_filter$ Change.src!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_object from datamodel=Change where index=$index_filter$ sourcetype=$sourcetype_filter$ All_Changes.object!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_action from datamodel=Change where index=$index_filter$ sourcetype=$sourcetype_filter$ All_Changes.action!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_result from datamodel=Change where index=$index_filter$ sourcetype=$sourcetype_filter$ All_Changes.result!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_user from datamodel=Change where index=$index_filter$ sourcetype=$sourcetype_filter$ All_Changes.user!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_dest from datamodel=Change where index=$index_filter$ sourcetype=$sourcetype_filter$ All_Changes.dest!="unknown" by index sourcetype ]
+| append [ | tstats summariesonly=true count as has_src from datamodel=Change where index=$index_filter$ sourcetype=$sourcetype_filter$ All_Changes.src!="unknown" by index sourcetype ]
 | stats sum(total) as total, sum(has_object) as has_object, sum(has_action) as has_action, sum(has_result) as has_result, sum(has_user) as has_user, sum(has_dest) as has_dest, sum(has_src) as has_src by index sourcetype
 | eval pct_object=round(100*has_object/total,2), pct_action=round(100*has_action/total,2), pct_result=round(100*has_result/total,2), pct_user=round(100*has_user/total,2), pct_dest=round(100*has_dest/total,2), pct_src=round(100*has_src/total,2)
 | eval coverage_score=round((pct_object*0.25)+(pct_action*0.20)+(pct_result*0.20)+(pct_user*0.15)+(pct_dest*0.10)+(pct_src*0.10),2)
@@ -272,6 +468,62 @@
         </search>
         <option name="refresh.display">progressbar</option>
       </table>
+    </panel>
+  </row>
+
+  <!-- ====================================================
+       TAB 3 - How to read this
+       ==================================================== -->
+  <row depends="$tab_help$">
+    <panel>
+      <title>How to read this dashboard</title>
+      <html>
+        <h3>Sourcetype reconciliation</h3>
+        <p>Lists every sourcetype the tenant sent in the last 7 days, plus every sourcetype in the contract master for that tenant, so gaps show in both directions. Each row is checked against the contract master (GitHub sync, DC-37), the catalog, sourcetype rejections, and the CIM scorecard (DC-101).</p>
+        <table class="table table-condensed">
+          <tr><th>Column</th><th>Meaning</th></tr>
+          <tr><td>sourcetype_check</td><td><b>MALFORMED</b>: the name contains raw event text or a config comment, not a real sourcetype; fix it at the source. <b>REJECTED</b>: reviewed and rejected; the AE should stop sending it. <b>ok</b>: valid name.</td></tr>
+          <tr><td>contract</td><td><b>CONTRACTED</b>: a contract exists for this sourcetype in this tenant's index. <b>OTHER TENANT ONLY</b>: contracted elsewhere, not for this tenant. <b>NO CONTRACT</b>: data is being ingested with no contract.</td></tr>
+          <tr><td>cde_approved</td><td>Whether CDE has approved the contract (<b>pending</b> until the contract master says true).</td></tr>
+          <tr><td>expected_cim</td><td>The data models the contract or the catalog says this sourcetype should feed.</td></tr>
+          <tr><td>cim_score / cim_flag</td><td>The best CIM field coverage score for this sourcetype (see below). <b>NOT IN SCORED MODELS</b> means none of its events reached the 8 data models DC-101 scores, either because it is not mapped to CIM or because it belongs to a model not scored yet (Email, Network_Resolution).</td></tr>
+          <tr><td>priority</td><td><b>HIGH</b>: malformed or rejected sourcetype, or data ingested with no contract. <b>MEDIUM</b>: any other gap. <b>OK</b>: no gap.</td></tr>
+          <tr><td>gap</td><td>The single most important action for the row, in priority order: sourcetype problem, no data, no contract, contract for another tenant only, not cataloged, CIM gap, awaiting CDE.</td></tr>
+        </table>
+
+        <h3>CIM field coverage score</h3>
+        <p>For each sourcetype in each data model, the score is the <b>weighted percentage of its events where the model's key fields are populated</b> (not "unknown"). 100 means every event has every key field. It measures whether fields are filled in, not whether the values are correct.</p>
+        <p>Example (Authentication): 1,000 events; user on 90%, action on 100%, src on 50%, dest on 100%, app on 0%. Score = 0.30x90 + 0.25x100 + 0.20x50 + 0.15x100 + 0.10x0 = <b>77, LOW</b>.</p>
+        <table class="table table-condensed">
+          <tr><th>Data model</th><th>Key fields and weights</th></tr>
+          <tr><td>Authentication</td><td>user 30%, action 25%, src 20%, dest 15%, app 10%</td></tr>
+          <tr><td>Alerts</td><td>signature 25%, severity 25%, outcome 25%, user 15%, dest 10%</td></tr>
+          <tr><td>Network_Traffic</td><td>src 25%, dest 25%, action 25%, app 15%, bytes 10%</td></tr>
+          <tr><td>Network_Sessions</td><td>src_ip 25%, dest_ip 25%, action 25%, user 15%, signature 10%</td></tr>
+          <tr><td>Intrusion_Detection</td><td>signature 25%, severity 25%, src 20%, dest 20%, action 5%, vendor_product 5%</td></tr>
+          <tr><td>Malware</td><td>signature 25%, severity 25%, dest 20%, file_name 15%, file_hash 10%, user 5%</td></tr>
+          <tr><td>Endpoint (Processes)</td><td>process_name 25%, dest 25%, user 20%, parent_process_name 20%, process_id 10%</td></tr>
+          <tr><td>Web</td><td>url 25%, dest 20%, user 15%, http_method 15%, status 15%, src 10%</td></tr>
+          <tr><td>Change</td><td>object 25%, action 20%, result 20%, user 15%, dest 10%, src 10%</td></tr>
+        </table>
+
+        <h3>investigation_flag</h3>
+        <table class="table table-condensed">
+          <tr><th>Flag</th><th>Score</th><th>What it means</th></tr>
+          <tr><td>NO CIM COVERAGE</td><td>0</td><td>Events reach the data model but none of its key fields are populated. Detections built on the model see the events but can't use them.</td></tr>
+          <tr><td>CRITICAL LOW</td><td>under 20</td><td>Most key fields are missing on most events.</td></tr>
+          <tr><td>VERY LOW</td><td>20 to 49</td><td>Several key fields are missing or sparse.</td></tr>
+          <tr><td>LOW</td><td>50 to 79</td><td>Usable, but one or more key fields are often missing.</td></tr>
+          <tr><td>OK</td><td>80 or more</td><td>Key fields are populated on most events.</td></tr>
+        </table>
+
+        <h3>Limits</h3>
+        <ul>
+          <li>Fast mode covers the last 4 hours of accelerated data model summaries; a sourcetype quiet in that window is missing from the scorecard.</li>
+          <li>Only accelerated data counts (summariesonly=true).</li>
+          <li>Email and Network_Resolution are not scored yet.</li>
+        </ul>
+      </html>
     </panel>
   </row>
 </form>
