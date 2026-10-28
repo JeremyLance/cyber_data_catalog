@@ -1,0 +1,15 @@
+_key,ae_name,checked,coverage_id,domain,gap_reason,matched_datasets,req_id,required,status,uhgid
+core|EMAIL-001,Core BPs,1787593699,core|EMAIL-001,Email,Registered but no events in 24h,,EMAIL-001,Yes,CATALOGED_NOT_FLOWING,core
+uhgid-000015|EMAIL-001,Atrius Health,1787593699,uhgid-000015|EMAIL-001,Email,No telemetry matching (sec_email_) for this tenant,,EMAIL-001,Yes,GAP - REQUIRED,uhgid-000015
+uhgid-000017|EMAIL-001,Banmedica,1787593699,uhgid-000017|EMAIL-001,Email,No telemetry matching (sec_email_) for this tenant,,EMAIL-001,Yes,GAP - REQUIRED,uhgid-000017
+uhgid-000024|EMAIL-001,Change Healthcare,1787593699,uhgid-000024|EMAIL-001,Email,No telemetry matching (sec_email_) for this tenant,,EMAIL-001,Yes,GAP - REQUIRED,uhgid-000024
+uhgid-000034|EMAIL-001,Episource,1787593699,uhgid-000034|EMAIL-001,Email,No telemetry matching (sec_email_) for this tenant,,EMAIL-001,Yes,GAP - REQUIRED,uhgid-000034
+uhgid-000058|EMAIL-001,Kelsey Seybold,1787593699,uhgid-000058|EMAIL-001,Email,No telemetry matching (sec_email_) for this tenant,,EMAIL-001,Yes,GAP - REQUIRED,uhgid-000058
+uhgid-000098|EMAIL-001,Reliant Medical Group,1787593699,uhgid-000098|EMAIL-001,Email,No telemetry matching (sec_email_) for this tenant,,EMAIL-001,Yes,GAP - REQUIRED,uhgid-000098
+uhgid-000106|EMAIL-001,SCA,1787593699,uhgid-000106|EMAIL-001,Email,Registered but no events in 24h,,EMAIL-001,Yes,CATALOGED_NOT_FLOWING,uhgid-000106
+uhgid-000111|EMAIL-001,Solutran,1787593699,uhgid-000111|EMAIL-001,Email,No telemetry matching (sec_email_) for this tenant,,EMAIL-001,Yes,GAP - REQUIRED,uhgid-000111
+uhgid-000297|EMAIL-001,WellMed,1787593699,uhgid-000297|EMAIL-001,Email,No telemetry matching (sec_email_) for this tenant,,EMAIL-001,Yes,GAP - REQUIRED,uhgid-000297
+uhgid-000422|EMAIL-001,PharmScript,1787593699,uhgid-000422|EMAIL-001,Email,No telemetry matching (sec_email_) for this tenant,,EMAIL-001,Yes,GAP - REQUIRED,uhgid-000422
+uhgid-000473|EMAIL-001,Holston Medical Group,1787593699,uhgid-000473|EMAIL-001,Email,No telemetry matching (sec_email_) for this tenant,,EMAIL-001,Yes,GAP - REQUIRED,uhgid-000473
+uhgid-000474|EMAIL-001,Amedisys,1787593699,uhgid-000474|EMAIL-001,Email,No telemetry matching (sec_email_) for this tenant,,EMAIL-001,Yes,GAP - REQUIRED,uhgid-000474
+uhgid-000481|EMAIL-001,Encompass Medical Group,1787593699,uhgid-000481|EMAIL-001,Email,No telemetry matching (sec_email_) for this tenant,,EMAIL-001,Yes,GAP - REQUIRED,uhgid-000481

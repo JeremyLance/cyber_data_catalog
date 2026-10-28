@@ -1,0 +1,36 @@
+index_family,domain_group,scope,core_index,tenant_pattern,index_regex,purpose,standard_notes,conformance_issue,status
+sec_auth,Core Identity & Access,both,sec_auth_core,sec_auth_uhgid-<NNNNNN>,^sec_auth_(core|uhgid-\d+)$,"AD, Okta, Duo, ADFS, VPN auth, LDAP, PAM",,,approved
+sec_cert,Core Identity & Access,core,sec_cert_core,sec_cert_uhgid-<NNNNNN>,^sec_cert_(core|uhgid-\d+)$,Certificate authority logs,,,approved
+sec_firewall,Network & Perimeter,both,sec_firewall_core,sec_firewall_uhgid-<NNNNNN>,^sec_firewall_(core|uhgid-\d+)$,"Firewall allow/deny logs, IDS/IPS alerts, VPN logs, Vmware firewall",,,approved
+sec_proxy,Network & Perimeter,core,sec_proxy_core,sec_proxy_uhgid-<NNNNNN>,^sec_proxy_(core|uhgid-\d+)$,"Web proxy logs -> BlueCoat, Zscaler, ?",,,approved
+sec_dns,Network & Perimeter,both,sec_dns_core,sec_dns_uhgid-<NNNNNN>,^sec_dns_(core|uhgid-\d+)$,DNS queries/resolution,,,approved
+sec_traffic,Network & Perimeter,core,sec_traffic_core,sec_traffic_uhgid-<NNNNNN>,^sec_traffic_(core|uhgid-\d+)$,"Netflow, cloud service provider flow logs (AWS, Azure, GCP); Endace/zeek logs",,,approved
+sec_waf,Network & Perimeter,core,sec_waf_core,sec_waf_uhgid-<NNNNNN>,^sec_waf_(core|uhgid-\d+)$,"WAF logs, F5, Cloudflare, AWS, Azure, GCP || DUPLICATE DEFINITION: WAF logs (Akamai, Cloudflare)",,DUPLICATE: defined under two domain groups (Network & Perimeter and Application & API Security) - single owner required,approved
+sec_loadbalancer,Network & Perimeter,core,sec_loadbalancer_core,sec_loadbalancer_uhgid-<NNNNNN>,^sec_loadbalancer_(core|uhgid-\d+)$,"Load Balancer logs - F5, AWS ALB, Azure, GCP",,,approved
+sec_dhcp,Network & Perimeter,both,sec_dhcp_core,sec_dhcp_uhgid-<NNNNNN>,^sec_dhcp_(core|uhgid-\d+)$,DHCP logs,,,approved
+sec_ndr,Network & Perimeter,core,sec_ndr_core,sec_ndr_uhgid-<NNNNNN>,^sec_ndr_(core|uhgid-\d+)$,network detection and response alerts,,CASING: written as Sec_NDR_core in the standard; Splunk index names must be lowercase (sec_ndr_core),approved
+sec_printer,Network & Perimeter,core,sec_printer_core,sec_printer_uhgid-<NNNNNN>,^sec_printer_(core|uhgid-\d+)$,Printer logs,,,approved
+sec_vpn,Network & Perimeter,core,sec_vpn_core,sec_vpn_uhgid-<NNNNNN>,^sec_vpn_(core|uhgid-\d+)$,VPN Logs,,,approved
+sec_grid_gateway,Network & Perimeter,core,sec_grid_gateway_core,sec_grid_gateway_uhgid-<NNNNNN>,^sec_grid_gateway_(core|uhgid-\d+)$,"Consul, Gridagateway, any components of gridgateway",,,approved
+sec_aws,Cloud Security,both,sec_aws_core,sec_aws_uhgid-<NNNNNN>,^sec_aws_(core|uhgid-\d+)$,"CloudTrail, GuardDuty",ESRO:Need to investigate if we can separate out CSPM and CWP. IF we can CWP can move to sec_edr_core,,approved
+sec_azure,Cloud Security,both,sec_azure_core,sec_azure_uhgid-<NNNNNN>,^sec_azure_(core|uhgid-\d+)$,"Azure AD, activity logs, Defender for cloud",,,approved
+sec_gcp,Cloud Security,both,sec_gcp_core,sec_gcp_uhgid-<NNNNNN>,^sec_gcp_(core|uhgid-\d+)$,"Audit & access logs, Security command center",,,approved
+sec_saas,Cloud Security,both,sec_saas_core,sec_saas_uhgid-<NNNNNN>,^sec_saas_(core|uhgid-\d+)$,"O365, Google Workspace, Salesforce audit",,,approved
+sec_xspm,Cloud Security,core,sec_xspm_core,sec_xspm_uhgid-<NNNNNN>,^sec_xspm_(core|uhgid-\d+)$,"CSPM, DSPM, AISPM, Prisma, etc.",,WILDCARD: not a concrete index name; must be resolved into named indexes,approved
+sec_edr,Endpoint Security,both,sec_edr_core,sec_edr_uhgid-<NNNNNN>,^sec_edr_(core|uhgid-\d+)$,"CrowdStrike, Defender for endpoint, Carbon Black EDR, PrismaCWP",,,approved
+sec_os,Endpoint Security,both,sec_os_core,sec_os_uhgid-<NNNNNN>,^sec_os_(core|uhgid-\d+)$,"Windows event logs (onprem and CSPs), Linux auditd(onprem and CSPs), container OS(onprem and CSPs)",,,approved
+sec_weblogs,Endpoint Security,core,sec_weblogs_core,sec_weblogs_uhgid-<NNNNNN>,^sec_weblogs_(core|uhgid-\d+)$,"Web IIS(onprem and CSPs), Apache(onprem and CSPs), Nginx(onprem and CSPs), etc…",,,approved
+sec_appcontrol,Endpoint Security,core,sec_appcontrol_core,sec_appcontrol_uhgid-<NNNNNN>,^sec_appcontrol_(core|uhgid-\d+)$,Appsense,,,approved
+sec_dlp,"Governance, Risk, Compliance",core,sec_dlp_core,sec_dlp_uhgid-<NNNNNN>,^sec_dlp_(core|uhgid-\d+)$,DLP logs,,,approved
+sec_gov,"Governance, Risk, Compliance",core,sec_gov_core,sec_gov_uhgid-<NNNNNN>,^sec_gov_(core|uhgid-\d+)$,"SOX, PCI, audit logs",,,approved
+sec_email,Email & Messaging Security,both,sec_email_core,sec_email_uhgid-<NNNNNN>,^sec_email_(core|uhgid-\d+)$,"Proofpoint, Mimecast, O365 ATP",,,approved
+sec_messaging,Email & Messaging Security,core,sec_messaging_core,sec_messaging_uhgid-<NNNNNN>,^sec_messaging_(core|uhgid-\d+)$,"Teams audit events,",,,approved
+sec_threatintel,Threat Intel & Vulnerability,core,sec_threatintel_core,sec_threatintel_uhgid-<NNNNNN>,^sec_threatintel_(core|uhgid-\d+)$,"TI feeds (STIX/TAXII, MISP, paid feeds)",,,approved
+sec_vuln,Threat Intel & Vulnerability,core,sec_vuln_core,sec_vuln_uhgid-<NNNNNN>,^sec_vuln_(core|uhgid-\d+)$,Tenable,,,approved
+sec_app,Application & API Security,core,sec_app_core,sec_app_uhgid-<NNNNNN>,^sec_app_(core|uhgid-\d+)$,App logs important to security investigations,,,approved
+sec_api,Application & API Security,core,sec_api_core,sec_api_uhgid-<NNNNNN>,^sec_api_(core|uhgid-\d+)$,API gateway logs,,,approved
+sec_virtualization,Virtualization,both,sec_virtualization_core,sec_virtualization_uhgid-<NNNNNN>,^sec_virtualization_(core|uhgid-\d+)$,"Vmware, Citrix",,,approved
+sec_storage_access,Data security,core,sec_storage_access_core,sec_storage_access_uhgid-<NNNNNN>,^sec_storage_access_(core|uhgid-\d+)$,"AWS (S3, EBS, EFS), Azure blob(blob, file, queue, table), GCP(Object,block, file)",,,approved
+sec_database_access,Data security,core,sec_database_access_core,sec_database_access_uhgid-<NNNNNN>,^sec_database_access_(core|uhgid-\d+)$,"Azure, AWS, GCP, Onprem (MSSQL, CloudSQL+A66:B70, PostgreSQL, AlloyDB, Spanner, Oracle, RDS,  etc)",,,approved
+sec_badge,Physical security,core,sec_badge_core,sec_badge_uhgid-<NNNNNN>,^sec_badge_(core|uhgid-\d+)$,Badge logs,,,approved
+sec_other,Unclassified (quarantine),both,sec_other_core,sec_other_uhgid-<NNNNNN>,^sec_other_(core|uhgid-\d+)$,Landing zone for telemetry with no assigned family. IN PRODUCTION BUT NOT IN THE v1 STANDARD.,Every dataset here is a placement finding. Target: zero Tier 0/1 datasets in sec_other.,"UNDOCUMENTED: exists in production, absent from the naming standard",provisional - needs ratification

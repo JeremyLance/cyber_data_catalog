@@ -1,0 +1,3 @@
+sourcetype,status,reason,ticket,rejected_by,rejected_date,notes
+instance-state,rejected,Raw EMR instance-state log content leaking into sourcetype field from uhgid-000024 - not usable security telemetry,,,,
+dnf.log,rejected,Linux dnf package-manager log - not security-relevant; AE instructed to stop forwarding,,,,

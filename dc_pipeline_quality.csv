@@ -1,0 +1,2 @@
+_key,checked,dataset_id,environment,feed_id,latency_p50_sec,latency_p95_sec,linebreak_errors_24h,pipeline,quality_state,timestamp_errors_24h,truncation_events_24h
+splunkd,1787336907,,,,,,,,DEGRADED,62119,22202

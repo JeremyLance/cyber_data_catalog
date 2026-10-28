@@ -1,0 +1,5 @@
+_key,notes,reason,rejected_by,rejected_date,sourcetype,status,ticket
+_var_log_messages-too_small,,Bad sourcetype and needs cleanup,jlance2,1793055234,_var_log_messages-too_small,rejected,
+dnf.log,,Linux dnf package-manager log - not security-relevant; AE instructed to stop forwarding,,1792905600,dnf.log,rejected,
+edge-sourceType,,sourcetype is not a security monitored sourcetype and needs dropped from logging,jlance2,1793055322,edge-sourceType,rejected,
+instance-state,,Raw EMR instance-state log content leaking into sourcetype field from uhgid-000024 - not usable security telemetry,,1792905600,instance-state,rejected,

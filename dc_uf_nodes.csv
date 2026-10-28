@@ -1,0 +1,3 @@
+_key,connects_via_hf,connects_via_hf_id,declared_tier,first_seen,last_seen,lifecycle_state,notes,status,technical_owner,tier_rationale,uf_host,uf_id,uhgid
+uf|10.216.98.37,,,Unassigned - review,1792479600,1792997994.8760004,discovered,,active,,,10.216.98.37,uf|10.216.98.37,
+uf|10.216.99.46,,,Unassigned - review,1792479600,1793084426.2710001,discovered,,active,,,10.216.99.46,uf|10.216.99.46,
