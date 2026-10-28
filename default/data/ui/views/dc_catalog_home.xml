@@ -71,6 +71,16 @@
     </panel>
     <panel>
       <single>
+        <title>Datasets with a contract</title>
+        <search base="catalog"><query>| where status="active" | search uhgid=$tenant|s$ domain=$domain|s$ declared_tier=$tier|s$ sourcetype=*$st$* | eval c=if(contract_status!="no contract",1,0) | stats sum(c) as ok, count as total | eval pct=if(total=0,0,round(ok/total*100,1)) | fields pct</query></search>
+        <option name="unit">%</option>
+        <option name="rangeColors">["0xdc4e41","0xf8be34","0x53a051"]</option>
+        <option name="rangeValues">[50,90]</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
         <title>Datasets with a CDE-approved contract</title>
         <search base="catalog"><query>| where status="active" | search uhgid=$tenant|s$ domain=$domain|s$ declared_tier=$tier|s$ sourcetype=*$st$* | eval c=if(contract_status="approved",1,0) | stats sum(c) as ok, count as total | eval pct=if(total=0,0,round(ok/total*100,1)) | fields pct</query></search>
         <option name="unit">%</option>
