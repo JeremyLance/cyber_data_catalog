@@ -1,4 +1,4 @@
-# Cyber Data & Detection Catalog - v0.5.4
+# Cyber Data & Detection Catalog - v0.5.5
 
 Install: copy `cyber_data_catalog/` to `$SPLUNK_HOME/etc/apps/` and restart, or
 upload the tarball via Apps -> Manage Apps -> Install app from file.
@@ -118,7 +118,16 @@ on sourcetype + index; "approved" means `cde_approval` is true.
 with the packaged copy, so commit the updated CSV before every deploy. DC-37 rebuilds it from the
 GitHub pull every 2 hours when that pull returns rows (it never writes an empty file).
 
+**Currently paused (v0.5.5):** the Splunk-GitHub runners are disabled, so the file is maintained
+by hand. The `dc_github_file_pull://contracts_master` input, DC-37 and DC-39 ship disabled.
+To resume: set the input to `disabled = 0` and enable DC-37 and DC-39. Once the pull runs,
+DC-37 replaces the hand-maintained file with the GitHub copy, so make sure that copy is current.
+
 ## Changelog
+### 0.5.5
+- GitHub contract sync paused (input, DC-37, DC-39) while the runners are disabled; the contract
+  master is maintained by hand.
+
 ### 0.5.4
 - Contract status now comes from the contract master (`dc_contract_state` macro) on Catalog Browse,
   Impact Analysis and DC-50; the catalog's own `contract_status` field was never populated, so
