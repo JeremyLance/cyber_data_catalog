@@ -1,0 +1,7 @@
+# Python bytecode - never ship in the Splunk package
+__pycache__/
+*.pyc
+
+# Splunk packaging output
+*.tgz
+*.spl
