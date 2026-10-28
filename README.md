@@ -1,9 +1,10 @@
-# Cyber Data & Detection Catalog (starter app) - v0.3
+# Cyber Data & Detection Catalog - v0.5.1
 
 Install: copy `cyber_data_catalog/` to `$SPLUNK_HOME/etc/apps/` and restart, or
 upload the tarball via Apps -> Manage Apps -> Install app from file.
 
-**ALL saved searches ship `disabled = 1`. Enable them one at a time.**
+**Saved searches ship enabled and scheduled** (`disabled = 0`), except DC-70, which v0.5.1 retired into DC-72.
+On a fresh install, review the macros below before the first scheduled run.
 
 ## Edit these before enabling anything
 | Macro | Why |
@@ -11,7 +12,7 @@ upload the tarball via Apps -> Manage Apps -> Install app from file.
 | `dc_scope_indexes` | Which indexes are in scope. Default `index=sec_*`. |
 | `dc_key` | Encodes the `sec_<domain>_uhgid-NNNNNN` naming convention. |
 | `dc_local_environment` | **Per Splunk instance.** Set to `legacy_<site>` on old sites, `saas2` on the target. |
-| `dc_cost_per_gb` | Your contracted $/GB/year. Default 150 is a placeholder. |
+| `dc_cost_per_gb` | Your contracted $/GB/year. Ships as 0.08, a placeholder - confirm before sharing cost figures. |
 | `dc_index_family` | Derives index family + scope from the ESRO naming standard. |
 
 ## Load order
@@ -41,6 +42,7 @@ upload the tarball via Apps -> Manage Apps -> Install app from file.
 | DC-10..13 | knowledge object harvest, dependency graph |
 | DC-14 | pipeline-correlated outage (one page instead of thirty) |
 | DC-20 | propose dataset tier from consumer tiers |
+| DC-21 | raise proposed tier to the floor in `dc_tier_floor_seed.csv` (Tier 0 candidates) |
 | DC-30/31 | schema drift (field level, fingerprint) — EXPENSIVE |
 | DC-32/33/34 | CIM capture rate, required field coverage, tag coverage |
 | DC-35 | pipeline hygiene: latency p95, timestamp errors, truncation |
@@ -56,7 +58,10 @@ upload the tarball via Apps -> Manage Apps -> Install app from file.
 
 ## Dashboards
 `dc_catalog_home` · `dc_dataset_detail` · `dc_data_health` · `dc_impact_analysis` ·
-`dc_migration_pipeline` · `dc_cim_normalization` · `dc_detection_health` · `dc_index_standard` · `dc_coverage_cost_lifecycle`
+`dc_migration_pipeline` · `dc_cim_normalization` · `dc_detection_health` · `dc_index_standard` · `dc_coverage_cost_lifecycle` ·
+`dc_infrastructure` · `dc_mitre_matrix`
+
+Drilldown and form pages (not in the nav): `dc_sourcetype_reject` · `dc_infra_promote` · `dc_setup`
 
 ## Requirements
 KV Store enabled. Role capability for `| rest` against `saved/searches` and `data/ui/views`.
@@ -93,3 +98,31 @@ DC-00c alerts if this is ever violated (records present but missing identity fie
 - **license_usage.log is available**, so DC-70/72/73/74 can be enabled now.
   Set `dc_cost_per_gb` to the contracted rate first.
 - **CMC is available** — use it to cross-check DC-72 totals in the first week.
+
+## Tiers
+CDE assigns Tier 1-4. **Tier 5 means "no CDE response yet"** and is treated as unknown
+(`dc_tier_num` maps it to 9, the same as unassigned). There are no Tier 0 datasets yet;
+`lookups/dc_tier_floor_seed.csv` lists the domain controller, EDR, NDR and privileged-access
+sourcetypes proposed for Tier 0. DC-21 only changes `proposed_tier`, so each shows
+`tier_delta=REVIEW` until someone ratifies it into `declared_tier`.
+`XmlWinEventLog:Security` is deliberately not in the floor file: it covers every Windows host,
+and Tier 0 should apply to domain controllers only.
+
+## Changelog
+### 0.5.1
+- Multi-line searches (DC-00d, 00e, 01, 07, 101) now carry `\` line continuations; without them
+  Splunk read only the first line. DC-31 rewritten (its SPL had CSV-doubled quotes).
+- DC-13, DC-15, DC-60: joins now fan out (`max=0`); previously each kept only its first match.
+- DC-60 rewritten to match on the new `index_family` column in the requirement map seed.
+- DC-41 reads back BAS and health fields before writing; DC-43 scores BAS as "not measured"
+  until a BAS result exists, and now computes `data_available`.
+- DC-70 retired; DC-72 is the single writer to `dc_cost` and keeps the DUPLICATE SPEND disposition.
+  `dc_cost` now stores index_family, domain_group, uhgid, ae_name, pipeline, environment, feed_status.
+- DC-101 uses the correct CIM root datasets (`IDS_Attacks`, `Malware_Attacks`, `All_Sessions`,
+  `All_Changes`); added the missing `dc_cim_coverage_scorecard_lookup` definition.
+- DC-73 joins daily bytes to daily events on `_time`; DC-00d merges instead of replacing the
+  infra collection; DC-99 and the promote form use the registry's node type names.
+- DC-37 reads and writes the lookup definitions DC-38 uses, and lowercases `cde_approval`.
+- `dc_split_cim` accepts `|` as well as `/`. Reject form only writes once reason and name are set.
+- New DC-21 and `dc_tier_floor_seed.csv` (see Tiers).
+

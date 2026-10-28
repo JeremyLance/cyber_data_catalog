@@ -1,0 +1,12 @@
+sourcetype,floor_tier,reason
+MSAD:NT6:Netlogon,Tier 0,"Domain controller authentication - candidate, ratify"
+ActiveDirectory,Tier 0,"Domain controller / AD change - candidate, ratify"
+quest:ad:syslog,Tier 0,"AD change auditing - candidate, ratify"
+mscs:azure:eventhub:defender:advancedhunting,Tier 0,"EDR (Microsoft Defender) - candidate, ratify"
+trendmicro:serverprotect,Tier 0,"EDR (server) - candidate, ratify"
+Prisma:CWP:Cloud,Tier 0,"EDR (cloud workload) - candidate, ratify"
+fe_cef_syslog,Tier 0,"NDR (FireEye) - candidate, ratify"
+rsa:netwitness,Tier 0,"NDR (NetWitness) - candidate, ratify"
+tm:tippingpoint,Tier 0,"NDR/IPS (TippingPoint) - candidate, ratify"
+cyberark:epv:cef,Tier 0,"Privileged access vault - candidate, ratify"
+delinea:secretserver,Tier 0,"Privileged access vault - candidate, ratify"

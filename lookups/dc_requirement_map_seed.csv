@@ -1,18 +1,18 @@
-req_id,domain,required,index_prefix,telemetry,tool_platform,notes
-EMAIL-001,Email,Yes,(sec_email_),Proofpoint Gateway,Proofpoint,Proofpoint filter/mail logs
-EMAIL-002,Email,If Applicable,(sec_saas_),Exchange Online / M365,Microsoft 365 / O365,"O365 audit, mail, management activity logs"
-EMAIL-003,Email,If Applicable,(sec_email_),M365 Defender Advanced Hunting,Microsoft Defender,"Email events, incidents, alerts"
-ENDPOINT-001,Workstations (Endpoint),Yes,(sec_edr_),MDE Alerts,UHG Microsoft Defender for Endpoint,"Incidents, alerts"
-ENDPOINT-002,Workstations (Endpoint),If Applicable,(sec_edr_),MDE Device Events,UHG Microsoft Defender for Endpoint,Device/process/network/authentication events
-SERVER-001,Server,Yes,(sec_edr_),Trend Micro Vision One,UHG Trend Micro Vision One,"Server alerts, OAT/audit events"
-SERVER-002,Server,If Applicable,(sec_waf_|sec_weblogs_),Web server logs,IIS / F5 / NGINX / Apache,"Access, error, WAF/load balancer events"
-NETWORK-001,Network,Yes,(sec_proxy_),Zscaler ZIA,UHG Zscaler,"Proxy, web, tunnel, threat logs"
-NETWORK-002,Network,Yes,(sec_firewall_),Firewall,AE Firewall,"Allow/deny, NAT, threat, VPN logs"
-NETWORK-003,Network,Yes,(sec_dns_),DNS,DNS Infrastructure,"Query, response, resolver logs"
-NETWORK-004,Network,Yes,(sec_dhcp_),DHCP,DHCP Infrastructure,"Lease, assignment, renewal logs"
-CLOUD-001,Cloud,Yes,(sec_cloud_),Prisma Cloud,Corporate Prisma Cloud,"Alerts, posture findings, runtime events"
-CLOUD-002,Cloud,Yes,(sec_cloud_),Cloud tenant logs,AWS / Azure / GCP,"CloudTrail, Azure Activity, GCP audit logs"
-CLOUD-003,Cloud,If Applicable,(sec_cloud_),Security Logging Broker,SBL,Cloud telemetry routing and enrichment
-IDENTITY-001,Identity (IAM),Yes,(sec_identity_),Active Directory,Active Directory,"Security event logs, authentication, group changes"
-IDENTITY-002,Identity (IAM),Yes,(sec_pam_),Delinea / CyberArk / PAM,Privileged IAM / PAM,"Privileged session, vault, checkout, elevation logs"
-IDENTITY-003,Identity (IAM),If Applicable,(sec_identity_),Identity Provider,Entra ID / Cloud IdP,"Sign-in, audit, conditional access, MFA logs"
+req_id,domain,required,index_prefix,index_family,telemetry,tool_platform,notes
+EMAIL-001,Email,Yes,(sec_email_),sec_email,Proofpoint Gateway,Proofpoint,Proofpoint filter/mail logs
+EMAIL-002,Email,If Applicable,(sec_saas_),sec_saas,Exchange Online / M365,Microsoft 365 / O365,"O365 audit, mail, management activity logs"
+EMAIL-003,Email,If Applicable,(sec_email_),sec_email,M365 Defender Advanced Hunting,Microsoft Defender,"Email events, incidents, alerts"
+ENDPOINT-001,Workstations (Endpoint),Yes,(sec_edr_),sec_edr,MDE Alerts,UHG Microsoft Defender for Endpoint,"Incidents, alerts"
+ENDPOINT-002,Workstations (Endpoint),If Applicable,(sec_edr_),sec_edr,MDE Device Events,UHG Microsoft Defender for Endpoint,Device/process/network/authentication events
+SERVER-001,Server,Yes,(sec_edr_),sec_edr,Trend Micro Vision One,UHG Trend Micro Vision One,"Server alerts, OAT/audit events"
+SERVER-002,Server,If Applicable,(sec_waf_|sec_weblogs_),sec_waf|sec_weblogs,Web server logs,IIS / F5 / NGINX / Apache,"Access, error, WAF/load balancer events"
+NETWORK-001,Network,Yes,(sec_proxy_),sec_proxy,Zscaler ZIA,UHG Zscaler,"Proxy, web, tunnel, threat logs"
+NETWORK-002,Network,Yes,(sec_firewall_),sec_firewall,Firewall,AE Firewall,"Allow/deny, NAT, threat, VPN logs"
+NETWORK-003,Network,Yes,(sec_dns_),sec_dns,DNS,DNS Infrastructure,"Query, response, resolver logs"
+NETWORK-004,Network,Yes,(sec_dhcp_),sec_dhcp,DHCP,DHCP Infrastructure,"Lease, assignment, renewal logs"
+CLOUD-001,Cloud,Yes,(sec_cloud_),sec_xspm,Prisma Cloud,Corporate Prisma Cloud,"Alerts, posture findings, runtime events"
+CLOUD-002,Cloud,Yes,(sec_cloud_),sec_aws|sec_azure|sec_gcp,Cloud tenant logs,AWS / Azure / GCP,"CloudTrail, Azure Activity, GCP audit logs"
+CLOUD-003,Cloud,If Applicable,(sec_cloud_),sec_aws|sec_azure|sec_gcp,Security Logging Broker,SBL,Cloud telemetry routing and enrichment
+IDENTITY-001,Identity (IAM),Yes,(sec_identity_),sec_auth,Active Directory,Active Directory,"Security event logs, authentication, group changes"
+IDENTITY-002,Identity (IAM),Yes,(sec_pam_),sec_auth,Delinea / CyberArk / PAM,Privileged IAM / PAM,"Privileged session, vault, checkout, elevation logs"
+IDENTITY-003,Identity (IAM),If Applicable,(sec_identity_),sec_auth|sec_azure,Identity Provider,Entra ID / Cloud IdP,"Sign-in, audit, conditional access, MFA logs"

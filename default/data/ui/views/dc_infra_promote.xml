@@ -17,8 +17,8 @@
     </input>
     <input type="dropdown" token="node_type">
       <label>Node type</label>
-      <choice value="heavy_forwarder">Heavy Forwarder</choice>
-      <choice value="edge_processor">Edge Processor</choice>
+      <choice value="Heavy Forwarder">Heavy Forwarder</choice>
+      <choice value="Edge Processor">Edge Processor</choice>
     </input>
     <input type="text" token="uhgid">
       <label>UHGID (or "core")</label>
