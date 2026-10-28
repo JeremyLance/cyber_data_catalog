@@ -9,7 +9,12 @@
 | lookup dc_observed_lookup dataset_id OUTPUT last_seen events_24h
 | lookup dc_baselines_lookup dataset_id OUTPUT median_events mad_events
 | `dc_default_silence`
-| fields dataset_id uhgid ae_name domain index sourcetype declared_tier proposed_tier status technical_owner contract_status contract_ticket schema_version gate1_normalization gate2_detection gate3_soc enterprise_ready last_seen events_24h median_events mad_events max_silence_minutes</query>
+| fields dataset_id uhgid ae_name domain index sourcetype declared_tier proposed_tier status technical_owner contract_status siem_status contract_ticket contract_date schema_version gate1_normalization gate2_detection gate3_soc enterprise_ready last_seen events_24h median_events mad_events max_silence_minutes</query>
+    <earliest>-1m</earliest>
+  </search>
+  <search id="contracts">
+    <query>| `dc_contracts_enriched`
+| fields uhgid index sourcetype ae_name contract_issue siem_status siem_completed_epoch</query>
     <earliest>-1m</earliest>
   </search>
   <search id="shadow">
@@ -71,21 +76,23 @@
     </panel>
     <panel>
       <single>
-        <title>Datasets with a contract</title>
-        <search base="catalog"><query>| where status="active" | search uhgid=$tenant|s$ domain=$domain|s$ declared_tier=$tier|s$ sourcetype=*$st$* | eval c=if(contract_status!="no contract",1,0) | stats sum(c) as ok, count as total | eval pct=if(total=0,0,round(ok/total*100,1)) | fields pct</query></search>
-        <option name="unit">%</option>
-        <option name="rangeColors">["0xdc4e41","0xf8be34","0x53a051"]</option>
-        <option name="rangeValues">[50,90]</option>
-        <option name="useColors">1</option>
+        <title>SIEM contracts completed</title>
+        <search base="contracts"><query>| search uhgid=$tenant|s$ sourcetype=*$st$* | where siem_status="SIEM complete" | stats count</query></search>
       </single>
     </panel>
     <panel>
       <single>
-        <title>Datasets with a CDE-approved contract</title>
-        <search base="catalog"><query>| where status="active" | search uhgid=$tenant|s$ domain=$domain|s$ declared_tier=$tier|s$ sourcetype=*$st$* | eval c=if(contract_status="approved",1,0) | stats sum(c) as ok, count as total | eval pct=if(total=0,0,round(ok/total*100,1)) | fields pct</query></search>
+        <title>Completed in the last 30 days</title>
+        <search base="contracts"><query>| search uhgid=$tenant|s$ sourcetype=*$st$* | where siem_status="SIEM complete" AND siem_completed_epoch&gt;=relative_time(now(),"-30d@d") | stats count</query></search>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Datasets covered by a SIEM contract</title>
+        <search base="catalog"><query>| where status="active" | search uhgid=$tenant|s$ domain=$domain|s$ declared_tier=$tier|s$ sourcetype=*$st$* | eval c=if(siem_status="SIEM complete",1,0) | stats sum(c) as ok, count as total | eval pct=if(total=0,0,round(ok/total*100,1)) | fields pct</query></search>
         <option name="unit">%</option>
         <option name="rangeColors">["0xdc4e41","0xf8be34","0x53a051"]</option>
-        <option name="rangeValues">[80,100]</option>
+        <option name="rangeValues">[50,90]</option>
         <option name="useColors">1</option>
       </single>
     </panel>
@@ -102,21 +109,42 @@
 
   <row>
     <panel>
+      <title>SIEM contracts completed per month</title>
+      <chart>
+        <search base="contracts"><query>| search uhgid=$tenant|s$ sourcetype=*$st$* | where siem_status="SIEM complete" | eval _time=siem_completed_epoch | timechart span=1mon count as "Contracts completed"</query></search>
+        <option name="charting.chart">column</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="charting.axisTitleX.visibility">collapsed</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>SIEM contracts completed by tenant</title>
+      <chart>
+        <search base="contracts"><query>| search uhgid=$tenant|s$ sourcetype=*$st$* | where siem_status="SIEM complete" | lookup dc_datasets_lookup uhgid OUTPUT ae_name as tenant | eval tenant=coalesce(mvindex(tenant,0),ae_name,uhgid) | stats count as "Contracts completed" by tenant | sort - "Contracts completed"</query></search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="charting.axisTitleX.visibility">collapsed</option>
+      </chart>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
       <title>Catalog</title>
       <table>
         <search base="catalog"><query>| search uhgid=$tenant|s$ domain=$domain|s$ declared_tier=$tier|s$ sourcetype=*$st$*
 | eval silence_min=if(isnull(last_seen),null(),round((now()-last_seen)/60,1))
 | eval health=case(isnull(last_seen),"NEVER_SEEN", silence_min&gt;max_silence_minutes,"DATA_DOWN", isnotnull(median_events) AND events_24h&lt;(median_events-4*mad_events),"VOLUME_LOW", 1=1,"OK")
 | eval last_seen=strftime(last_seen,"%Y-%m-%d %H:%M")
-| table dataset_id ae_name domain index sourcetype declared_tier proposed_tier health events_24h last_seen technical_owner contract_status contract_ticket schema_version gate1_normalization gate2_detection gate3_soc enterprise_ready
+| table dataset_id ae_name domain index sourcetype declared_tier proposed_tier health events_24h last_seen technical_owner siem_status contract_ticket contract_date schema_version gate1_normalization gate2_detection gate3_soc enterprise_ready
 | sort declared_tier ae_name sourcetype</query></search>
         <option name="count">25</option>
         <option name="drilldown">cell</option>
         <format type="color" field="health">
           <colorPalette type="map">{"DATA_DOWN":#DC4E41,"VOLUME_LOW":#F8BE34,"OK":#53A051,"NEVER_SEEN":#8C8C8C}</colorPalette>
         </format>
-        <format type="color" field="contract_status">
-          <colorPalette type="map">{"approved":#53A051,"pending CDE":#F8BE34,"no contract":#DC4E41}</colorPalette>
+        <format type="color" field="siem_status">
+          <colorPalette type="map">{"SIEM complete":#53A051,"SIEM in progress":#F8BE34,"no contract":#DC4E41}</colorPalette>
         </format>
         <format type="color" field="declared_tier">
           <colorPalette type="map">{"Tier 0":#DC4E41,"Tier 1":#F8BE34,"Tier 2":#708794,"Tier 3":#8C8C8C,"Tier 4":#8C8C8C,"Tier 5":#5C6773}</colorPalette>
@@ -163,12 +191,12 @@
 
   <row>
     <panel>
-      <title>Contract-matched, pending CDE approval</title>
+      <title>Uncataloged data that already has a SIEM contract - add to the catalog</title>
       <table>
-        <search base="shadow"><query>| search uhgid=$tenant|s$ sourcetype=*$st$* | where classification IN ("CONTRACT_MATCHED_EXACT","CONTRACT_MATCHED_OTHER_TENANT") | eval cde_approved=coalesce(cde_approved,"false") | table dataset_id uhgid sourcetype index classification cde_approved exact_ticket any_ticket events_24h | sort cde_approved - events_24h</query></search>
+        <search base="shadow"><query>| search uhgid=$tenant|s$ sourcetype=*$st$* | where classification IN ("CONTRACT_MATCHED_EXACT","CONTRACT_MATCHED_OTHER_TENANT") | eval contract_match=if(classification="CONTRACT_MATCHED_EXACT","this tenant","another tenant only"), contract_ticket=coalesce(exact_ticket,any_ticket) | table dataset_id uhgid sourcetype index contract_match contract_ticket events_24h | sort contract_match - events_24h</query></search>
         <option name="count">10</option>
-        <format type="color" field="cde_approved">
-          <colorPalette type="map">{"true":#53A051,"false":#F8BE34}</colorPalette>
+        <format type="color" field="contract_match">
+          <colorPalette type="map">{"this tenant":#53A051,"another tenant only":#F8BE34}</colorPalette>
         </format>
       </table>
     </panel>

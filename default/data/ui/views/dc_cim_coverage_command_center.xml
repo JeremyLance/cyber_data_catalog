@@ -150,22 +150,32 @@
       <input type="link" token="tab" searchWhenChanged="true">
         <label></label>
         <choice value="recon">Sourcetype reconciliation</choice>
+        <choice value="contracts">SIEM contracts and CDE</choice>
         <choice value="cim">CIM field coverage</choice>
         <choice value="help">How to read this</choice>
         <default>recon</default>
         <change>
           <condition value="recon">
             <set token="tab_recon">true</set>
+            <unset token="tab_contracts"></unset>
+            <unset token="tab_cim"></unset>
+            <unset token="tab_help"></unset>
+          </condition>
+          <condition value="contracts">
+            <set token="tab_contracts">true</set>
+            <unset token="tab_recon"></unset>
             <unset token="tab_cim"></unset>
             <unset token="tab_help"></unset>
           </condition>
           <condition value="cim">
             <set token="tab_cim">true</set>
+            <unset token="tab_contracts"></unset>
             <unset token="tab_recon"></unset>
             <unset token="tab_help"></unset>
           </condition>
           <condition value="help">
             <set token="tab_help">true</set>
+            <unset token="tab_contracts"></unset>
             <unset token="tab_recon"></unset>
             <unset token="tab_cim"></unset>
           </condition>
@@ -218,6 +228,92 @@
         <option name="charting.chart.stackMode">stacked</option>
         <option name="charting.legend.placement">bottom</option>
       </chart>
+    </panel>
+  </row>
+
+  <!-- ====================================================
+       TAB - SIEM contracts and CDE approval
+       ==================================================== -->
+  <search id="contracts" depends="$tab_contracts$">
+    <query>| `dc_contracts_enriched`
+| search index=$index_filter$ sourcetype=$sourcetype_filter$
+| lookup dc_datasets_lookup uhgid OUTPUT ae_name as tenant_name
+| eval tenant=coalesce(mvindex(tenant_name,0), ae_name, uhgid)
+| lookup dc_observed_lookup dataset_id OUTPUT last_seen
+| eval data_last_seen=if(isnull(last_seen),"not seen",strftime(last_seen,"%Y-%m-%d"))
+| fields tenant uhgid index sourcetype contract_issue vendor product datamodels siem_status siem_completed cde_status days_waiting_on_cde data_last_seen</query>
+    <earliest>-1m</earliest>
+  </search>
+
+  <row depends="$tab_contracts$">
+    <panel>
+      <single>
+        <title>SIEM contracts completed</title>
+        <search base="contracts"><query>| where siem_status="SIEM complete" | stats count</query></search>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>CDE approved</title>
+        <search base="contracts"><query>| where cde_status="CDE approved" | stats count</query></search>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x8c8c8c","0x53a051"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Pending CDE approval</title>
+        <search base="contracts"><query>| where siem_status="SIEM complete" AND cde_status="pending CDE" | stats count</query></search>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x53a051","0xf8be34"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Median days waiting on CDE</title>
+        <search base="contracts"><query>| where isnotnull(days_waiting_on_cde) | stats median(days_waiting_on_cde) as days | eval days=round(days,0)</query></search>
+        <option name="unit">days</option>
+      </single>
+    </panel>
+  </row>
+
+  <row depends="$tab_contracts$">
+    <panel>
+      <title>Pending CDE approval by tenant and how long it has waited</title>
+      <chart>
+        <search base="contracts"><query>| where siem_status="SIEM complete" AND cde_status="pending CDE"
+| eval waiting=case(days_waiting_on_cde&lt;30,"under 30 days", days_waiting_on_cde&lt;90,"30-89 days", 1=1,"90+ days")
+| chart count over tenant by waiting</query></search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.legend.placement">bottom</option>
+        <option name="charting.fieldColors">{"under 30 days":0x53A051,"30-89 days":0xF8BE34,"90+ days":0xDC4E41}</option>
+      </chart>
+    </panel>
+  </row>
+
+  <row depends="$tab_contracts$">
+    <panel>
+      <title>Every contract - SIEM status and CDE status, longest waiting first</title>
+      <table>
+        <search base="contracts"><query>| sort - days_waiting_on_cde tenant sourcetype
+| table tenant index sourcetype contract_issue vendor product datamodels siem_status siem_completed cde_status days_waiting_on_cde data_last_seen</query></search>
+        <option name="count">50</option>
+        <option name="drilldown">none</option>
+        <format type="color" field="siem_status">
+          <colorPalette type="map">{"SIEM complete":#53A051,"SIEM in progress":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="cde_status">
+          <colorPalette type="map">{"CDE approved":#53A051,"pending CDE":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="data_last_seen">
+          <colorPalette type="map">{"not seen":#DC4E41}</colorPalette>
+        </format>
+      </table>
     </panel>
   </row>
 
@@ -532,6 +628,7 @@
         <table class="table table-condensed">
           <tr><th>Column</th><th>Meaning</th></tr>
           <tr><td>sourcetype_check</td><td><b>MALFORMED</b>: the name contains raw event text or a config comment, not a real sourcetype; fix it at the source. <b>REJECTED</b>: reviewed and rejected; the AE should stop sending it. <b>ok</b>: valid name.</td></tr>
+          <tr><td>SIEM status / CDE status</td><td>Two separate approvals. <b>SIEM complete</b>: the SIEM validation team finished the contract and notified CDE (notification_sent is true in the contract master). <b>CDE approved</b>: CDE has signed off (cde_approval is true); anything else is <b>pending CDE</b>. The "SIEM contracts and CDE" tab lists every contract with both statuses and how long it has waited on CDE.</td></tr>
           <tr><td>contract</td><td><b>CONTRACTED</b>: a contract exists for this sourcetype in this tenant's index. <b>OTHER TENANT ONLY</b>: contracted elsewhere, not for this tenant. <b>NO CONTRACT</b>: data is being ingested with no contract.</td></tr>
           <tr><td>cde_approved</td><td>Whether CDE has approved the contract (<b>pending</b> until the contract master says true).</td></tr>
           <tr><td>expected_cim</td><td>The data models the contract or the catalog says this sourcetype should feed.</td></tr>

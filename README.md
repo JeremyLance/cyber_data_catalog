@@ -1,4 +1,4 @@
-# Cyber Data & Detection Catalog - v0.5.5
+# Cyber Data & Detection Catalog - v0.5.6
 
 Install: copy `cyber_data_catalog/` to `$SPLUNK_HOME/etc/apps/` and restart, or
 upload the tarball via Apps -> Manage Apps -> Install app from file.
@@ -111,9 +111,12 @@ sourcetypes proposed for Tier 0. DC-21 only changes `proposed_tier`, so each sho
 and Tier 0 should apply to domain controllers only.
 
 ## Contract master
-`lookups/dc_contracts_master.csv` is the contract lookup (`dc_contract_master`). Contract status
-(approved / pending CDE / no contract) is derived from it by the `dc_contract_state` macro, matching
-on sourcetype + index; "approved" means `cde_approval` is true.
+`lookups/dc_contracts_master.csv` is the contract lookup (`dc_contract_master`). Two separate statuses
+are derived from it by the `dc_contract_state` macro, matching on sourcetype + index:
+- **SIEM status** - `SIEM complete` when the SIEM validation team has finished the contract and
+  notified CDE (`notification_sent` is true); the home page reports these.
+- **CDE status** - `CDE approved` when `cde_approval` is true, otherwise `pending CDE`; the
+  Command Center's "SIEM contracts and CDE" tab reports these and how long each has waited.
 **Keep the repo copy current.** Installing the app package can replace the file on the search head
 with the packaged copy, so commit the updated CSV before every deploy. DC-37 rebuilds it from the
 GitHub pull every 2 hours when that pull returns rows (it never writes an empty file).
@@ -124,6 +127,13 @@ To resume: set the input to `disabled = 0` and enable DC-37 and DC-39. Once the 
 DC-37 replaces the hand-maintained file with the GitHub copy, so make sure that copy is current.
 
 ## Changelog
+### 0.5.6
+- SIEM contract completion and CDE approval are reported separately. Catalog Browse shows the SIEM
+  team's numbers (contracts completed, last 30 days, dataset coverage, per month, per tenant);
+  the Command Center has a new "SIEM contracts and CDE" tab with every contract, its CDE status
+  and days waiting. DC-50 adds `siem_contract_coverage_pct`.
+- Contract dates are parsed in both formats found in the file (ISO 8601 and MM/DD/YYYY HH:MM:SS).
+
 ### 0.5.5
 - GitHub contract sync paused (input, DC-37, DC-39) while the runners are disabled; the contract
   master is maintained by hand.
