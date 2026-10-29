@@ -1,4 +1,4 @@
-<dashboard theme="dark" version="1.1">
+<dashboard script="dc_table_export.js" theme="dark" version="1.1">
   <label>Cyber Data Catalog - Detection Health and ATT&amp;CK Exposure</label>
   <description>Enabled is not the same as working. Confidence = data flowing + CIM normalized + BAS validated + executing without skips.</description>
   <row>

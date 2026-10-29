@@ -1,4 +1,4 @@
-<dashboard theme="dark" version="1.1">
+<dashboard script="dc_table_export.js" theme="dark" version="1.1">
   <label>MITRE ATT&amp;CK Coverage Matrix</label>
   <description>Live comparison of production/risk-accepted correlation searches against the full ATT&amp;CK technique set from ctm_mitre_lookup.csv. Cell text is "Technique (detection count)". Bucket 0 = zero detections for that technique.</description>
   <row>

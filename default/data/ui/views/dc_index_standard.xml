@@ -1,4 +1,4 @@
-<dashboard theme="dark" version="1.1">
+<dashboard script="dc_table_export.js" theme="dark" version="1.1">
   <label>Cyber Data Catalog - Index Standard Conformance</label>
   <description>Does the data actually live where the ESRO index naming standard says it should, and what does each family cost?</description>
   <row>

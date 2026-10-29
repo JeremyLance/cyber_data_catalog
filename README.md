@@ -127,6 +127,13 @@ To resume: set the input to `disabled = 0` and enable DC-37 and DC-39. Once the 
 DC-37 replaces the hand-maintained file with the GitHub copy, so make sure that copy is current.
 
 ## Changelog
+### 0.5.7
+- Every table on every dashboard (except Setup) has an **Export CSV** button. It downloads all rows
+  of the table's current results, with the current filters applied, named after the panel title.
+  It works on panels that post-process a shared base search, where Splunk's own Export is
+  unavailable, and reruns nothing. Code: `appserver/static/dc_table_export.js`, loaded through
+  `script="dc_table_export.js"` on each dashboard's root tag.
+
 ### 0.5.6
 - SIEM contract completion and CDE approval are reported separately. Catalog Browse shows the SIEM
   team's numbers (contracts completed, last 30 days, dataset coverage, per month, per tenant);

@@ -1,4 +1,4 @@
-<form theme="dark" version="1.1">
+<form script="dc_table_export.js" theme="dark" version="1.1">
   <label>Cyber Data Catalog - Reject Sourcetype</label>
   <description>Marks a sourcetype from the Unmatched/Novel list as rejected - data the team has reviewed and decided not to catalog, where the fix is the remote AE updating their inputs to stop collecting it (e.g. dnf.log, instance-state). Rejection is GLOBAL by sourcetype name, not scoped to one tenant/index/dataset - matches how dc_valid_sourcetype and DC-38 already key off sourcetype alone. Writes to dc_sourcetype_rejections_lookup; DC-38 picks it up on its next run (every 2h) and reclassifies every occurrence of that sourcetype as REJECTED, where it then shows up on the Catalog Browse "Malformed or Rejected sourcetypes by tenant" panel instead of here. Ticket field is free text for now - filing a git issue automatically is a planned follow-up, not wired up yet.</description>
 

@@ -1,4 +1,4 @@
-<dashboard theme="dark" version="1.1">
+<dashboard script="dc_table_export.js" theme="dark" version="1.1">
   <label>Cyber Data Catalog - Data Health and SLA</label>
   <description>Contract breaches ranked by blast radius, not by alphabetical order.</description>
 

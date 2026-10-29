@@ -1,4 +1,4 @@
-<form theme="dark" version="1.1">
+<form script="dc_table_export.js" theme="dark" version="1.1">
   <label>Cyber Data Catalog - Browse</label>
   <description>Every tenant x index x sourcetype we know about, what tier it is, who owns it, and whether it is actually flowing. The filters apply to every panel.</description>
 

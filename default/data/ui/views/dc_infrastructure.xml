@@ -1,4 +1,4 @@
-<dashboard theme="dark" version="1.1">
+<dashboard script="dc_table_export.js" theme="dark" version="1.1">
   <label>Cyber Data Catalog - Infrastructure (HF and Edge Processor)</label>
   <description>Heavy Forwarders and Edge Processors are the pipe, not the data. A dead Tier 0 node takes every downstream dataset dark at once - this catches that before the per-dataset alerts start cascading in. Heartbeat sources differ by node type: Heavy Forwarders are tracked via DC-90's traffic-proxy signals (per_host_thruput/tcpin_connections); Edge Processors are tracked via DC-92's OTel self-metrics (index=_metrics, metric=up/process_uptime) - validated 2026-10-21 as faster and independent of the 9997 data path (confirmed against the KSC_edge firewall case, where 443/control-plane stayed up but 9997 broke and both _internal traffic signals and _metrics went dark together). An EP node with no fresh _metrics simply stops getting a new row each cycle, so its last_heartbeat freezes and silence_minutes below ages it out on its own - no separate "down" branch needed.</description>
   <row>

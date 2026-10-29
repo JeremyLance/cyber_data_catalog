@@ -1,4 +1,4 @@
-<dashboard theme="dark" version="1.1">
+<dashboard script="dc_table_export.js" theme="dark" version="1.1">
   <label>Cyber Data Catalog - Migration and Pipeline</label>
   <description>Consolidation view: which environment each feed lives in, dual-home divergence, pipeline-level outages, and open change windows.</description>
   <row>
