@@ -27,7 +27,7 @@
     </input>
     <input type="dropdown" token="mode" depends="$tab_cim$">
       <label>CIM coverage mode</label>
-      <choice value="lookup">Fast (last DC-101 run, max 4h old)</choice>
+      <choice value="lookup">Fast (latest score per sourcetype, refreshed every 4h)</choice>
       <choice value="live">Live (query selected time range)</choice>
       <default>lookup</default>
       <change>
@@ -322,7 +322,7 @@
        ==================================================== -->
   <row depends="$mode_fast$,$tab_cim$">
     <panel>
-      <title>CIM field coverage scorecard (as of the last DC-101 run, every 4 hours)</title>
+      <title>CIM field coverage scorecard (DC-101a-k, one search per data model, every 4 hours)</title>
       <table>
         <search>
           <query>| inputlookup dc_cim_coverage_scorecard_lookup
@@ -632,7 +632,7 @@
           <tr><td>contract</td><td><b>CONTRACTED</b>: a contract exists for this sourcetype in this tenant's index. <b>OTHER TENANT ONLY</b>: contracted elsewhere, not for this tenant. <b>NO CONTRACT</b>: data is being ingested with no contract.</td></tr>
           <tr><td>cde_approved</td><td>Whether CDE has approved the contract (<b>pending</b> until the contract master says true).</td></tr>
           <tr><td>expected_cim</td><td>The data models the contract or the catalog says this sourcetype should feed.</td></tr>
-          <tr><td>cim_score / cim_flag</td><td>The best CIM field coverage score for this sourcetype (see below). <b>NOT IN SCORED MODELS</b> means none of its events reached the 10 data models DC-101 scores, usually because it is not mapped to any CIM data model (or is not tagged for one).</td></tr>
+          <tr><td>cim_score / cim_flag</td><td>The best CIM field coverage score for this sourcetype (see below). <b>NOT IN SCORED MODELS</b> means none of its events reached the 11 data models the scorecard (DC-101a-k) covers, usually because it is not mapped to any CIM data model (or is not tagged for one).</td></tr>
           <tr><td>priority</td><td><b>HIGH</b>: malformed or rejected sourcetype, or data ingested with no contract. <b>MEDIUM</b>: any other gap. <b>OK</b>: no gap.</td></tr>
           <tr><td>gap</td><td>The single most important action for the row, in priority order: sourcetype problem, no data, no contract, contract for another tenant only, not cataloged, CIM gap, awaiting CDE.</td></tr>
         </table>
@@ -667,9 +667,9 @@
 
         <h3>Limits</h3>
         <ul>
-          <li>Fast mode covers the last 4 hours of accelerated data model summaries; a sourcetype quiet in that window is missing from the scorecard.</li>
+          <li>Fast mode shows the latest score for each sourcetype. Each data model is re-scored every 4 hours from the previous 4 hours of data; a sourcetype that goes quiet keeps its last score (see the checked column) for up to 7 days, then drops off.</li>
           <li>Only accelerated data counts (summariesonly=true).</li>
-          <li>Ten data models are scored: Authentication, Alerts, Network_Traffic, Network_Sessions, Intrusion_Detection, Malware, Endpoint (Processes), Web, Change, Email, Network_Resolution (DNS). Others (for example DLP or Vulnerabilities) are not.</li>
+          <li>Eleven data models are scored: Authentication, Alerts, Network_Traffic, Network_Sessions, Intrusion_Detection, Malware, Endpoint (Processes), Web, Change, Email, Network_Resolution (DNS). Others (for example DLP or Vulnerabilities) are not.</li>
         </ul>
       </html>
     </panel>

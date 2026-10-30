@@ -1,4 +1,4 @@
-# Cyber Data & Detection Catalog - v0.5.6
+# Cyber Data & Detection Catalog - v0.5.8
 
 Install: copy `cyber_data_catalog/` to `$SPLUNK_HOME/etc/apps/` and restart, or
 upload the tarball via Apps -> Manage Apps -> Install app from file.
@@ -127,6 +127,14 @@ To resume: set the input to `disabled = 0` and enable DC-37 and DC-39. Once the 
 DC-37 replaces the hand-maintained file with the GitHub copy, so make sure that copy is current.
 
 ## Changelog
+### 0.5.8
+- DC-101 split into DC-101a-k, one search per CIM data model, staggered 3 minutes apart every
+  4 hours, each upserting into `dc_cim_coverage_scorecard_lookup`. A slow or failed data model no
+  longer stalls or truncates the whole scorecard. DC-101 is retired (disabled).
+- Fixed: a field never populated in the window made the whole coverage score null, so the row was
+  flagged NO CIM COVERAGE even when other fields were populated. Missing field counts are now 0.
+- The scorecard keeps each sourcetype's latest score; DC-101z drops rows not refreshed in 7 days.
+
 ### 0.5.7
 - Every table on every dashboard (except Setup) has an **Export CSV** button. It downloads all rows
   of the table's current results, with the current filters applied, named after the panel title.
