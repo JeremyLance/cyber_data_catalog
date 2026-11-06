@@ -70,7 +70,7 @@
        gaps show in both directions.
        ==================================================== -->
   <search id="recon">
-    <query>`dc_cim_recon($index_filter$,$sourcetype_filter$)`</query>
+    <query>| `dc_cim_recon($index_filter$,$sourcetype_filter$)`</query>
     <earliest>-7d</earliest>
     <latest>now</latest>
   </search>

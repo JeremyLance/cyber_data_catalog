@@ -1,4 +1,4 @@
-# Cyber Data & Detection Catalog - v0.6.0
+# Cyber Data & Detection Catalog - v0.6.1
 
 Install: copy `cyber_data_catalog/` to `$SPLUNK_HOME/etc/apps/` and restart, or
 upload the tarball via Apps -> Manage Apps -> Install app from file.
@@ -129,6 +129,10 @@ To resume: set the input to `disabled = 0` and enable DC-37 and DC-39. Once the 
 DC-37 replaces the hand-maintained file with the GitHub copy, so make sure that copy is current.
 
 ## Changelog
+### 0.6.1
+- Fixed "tstats must be the first command" on DC-102 and the CIM Command Center summary.
+  `dc_cim_recon` no longer starts with a pipe; callers use `` | `dc_cim_recon(...)` ``.
+
 ### 0.6.0
 - **CIM Coverage Command Center executive summary.** Every tracked sourcetype (one per tenant
   index, last 7 days plus the contract master) now has exactly one status. The status is the first
