@@ -25,6 +25,19 @@
       <label>Sourcetype pattern</label>
       <default>*</default>
     </input>
+    <input type="dropdown" token="status_filter" searchWhenChanged="true">
+      <label>Status (reconciliation table)</label>
+      <choice value="*">All statuses</choice>
+      <choice value="Malformed or rejected">Malformed or rejected</choice>
+      <choice value="Ingested, no contract">Ingested, no contract</choice>
+      <choice value="Contract extension needed">Contract extension needed</choice>
+      <choice value="Contracted, no data seen">Contracted, no data seen</choice>
+      <choice value="Not yet cataloged">Not yet cataloged</choice>
+      <choice value="Awaiting CDE approval">Awaiting CDE approval</choice>
+      <choice value="CIM normalization gap">CIM normalization gap</choice>
+      <choice value="Complete">Complete</choice>
+      <default>*</default>
+    </input>
     <input type="dropdown" token="mode" depends="$tab_cim$">
       <label>CIM coverage mode</label>
       <choice value="lookup">Fast (latest score per sourcetype, refreshed every 4h)</choice>
@@ -57,67 +70,61 @@
        gaps show in both directions.
        ==================================================== -->
   <search id="recon">
-    <query>| tstats count as events_7d, max(_time) as last_seen where `dc_scope_indexes` `dc_indexed_within(-7d)` index=$index_filter$ sourcetype=$sourcetype_filter$ earliest=-7d by index sourcetype
-| `dc_drop_future_log_pairs`
-| eval discovered=1
-| append [ | inputlookup dc_contract_master | eval index=lower(index) | search index=$index_filter$ sourcetype=$sourcetype_filter$ | fields index sourcetype ]
-| stats sum(events_7d) as events_7d, max(last_seen) as last_seen, max(discovered) as discovered by index sourcetype
-| fillnull value=0 discovered events_7d
-| `dc_key`
-| `dc_valid_sourcetype(sourcetype)`
-| lookup dc_sourcetype_rejections_lookup sourcetype OUTPUT status as reject_status
-| lookup dc_datasets_lookup dataset_id OUTPUT status as catalog_status, cim_datamodel as catalog_cim
-| lookup dc_datasets_lookup uhgid OUTPUT ae_name
-| eval ae_name=mvindex(ae_name,0)
-| lookup dc_contract_master sourcetype index OUTPUT contract_issue as contract_ticket, cde_approval, datamodels as contract_cim
-| lookup dc_contract_master sourcetype OUTPUT contract_issue as other_ticket
-| join type=left index sourcetype [ | inputlookup dc_cim_coverage_scorecard_lookup | stats max(coverage_score) as cim_score, values(domain) as cim_models_scored by index sourcetype ]
-| eval sourcetype_check=case(sourcetype_valid="no","MALFORMED", reject_status="rejected","REJECTED", 1=1,"ok")
-| eval in_catalog=if(isnotnull(catalog_status),"yes","no")
-| eval contract=case(isnotnull(contract_ticket),"CONTRACTED", isnotnull(other_ticket),"OTHER TENANT ONLY", 1=1,"NO CONTRACT")
-| eval contract_ticket=coalesce(mvindex(contract_ticket,0), mvindex(other_ticket,0))
-| eval cde_approved=case(contract="NO CONTRACT","", lower(mvindex(cde_approval,0))="true","yes", 1=1,"pending")
-| eval expected_cim=coalesce(if(contract_cim="",null(),mvindex(contract_cim,0)), if(catalog_cim="",null(),catalog_cim))
-| eval cim_flag=case(isnull(cim_score),"NOT IN SCORED MODELS", cim_score=0,"NO CIM COVERAGE", cim_score&lt;20,"CRITICAL LOW", cim_score&lt;50,"VERY LOW", cim_score&lt;80,"LOW", 1=1,"OK")
-| eval gap=case(
-    sourcetype_check="MALFORMED","Fix sourcetype at the source (props.conf / HEC override)",
-    sourcetype_check="REJECTED","Rejected - AE to stop sending",
-    discovered=0,"Contracted but no data in 7 days - confirm onboarding",
-    contract="NO CONTRACT","Ingested with no contract - create a contract",
-    contract="OTHER TENANT ONLY","Contracted for another tenant only - extend the contract",
-    in_catalog="no","Contracted but not cataloged - add to the catalog seed",
-    cim_flag IN ("NO CIM COVERAGE","CRITICAL LOW","VERY LOW"),"CIM normalization gap",
-    cim_flag="NOT IN SCORED MODELS" AND isnotnull(expected_cim),"Check CIM mapping - expected ".expected_cim,
-    cde_approved="pending","Awaiting CDE approval",
-    1=1,"OK")
-| eval priority=case(gap="OK","OK", match(gap,"^(Fix|Rejected|Ingested)"),"HIGH", 1=1,"MEDIUM")
-| eval last_seen=if(discovered=1,strftime(last_seen,"%Y-%m-%d %H:%M"),"never (7d)"), cim_models_scored=mvjoin(cim_models_scored,", ")
-| fields uhgid index sourcetype ae_name priority events_7d last_seen discovered sourcetype_check in_catalog contract contract_ticket cde_approved expected_cim cim_models_scored cim_score cim_flag gap</query>
+    <query>`dc_cim_recon($index_filter$,$sourcetype_filter$)`</query>
     <earliest>-7d</earliest>
     <latest>now</latest>
   </search>
 
+  <!-- ====================================================
+       EXECUTIVE SUMMARY (v0.6.0)
+       Every tracked sourcetype (one per tenant index) has exactly one status, so
+       Complete + Remaining = Total, and the status tiles add up to Remaining.
+       Click a tile to list its sourcetypes on the reconciliation tab.
+       ==================================================== -->
+  <row>
+    <panel>
+      <html>
+        <p style="margin:0">Each count is one sourcetype in one tenant index, seen in the last 7 days or listed in the contract master. Every sourcetype has exactly one status: the first unmet step, worked left to right. <b>Complete</b> means contracted, cataloged, CDE approved and CIM normalized.</p>
+      </html>
+    </panel>
+  </row>
   <row>
     <panel>
       <single>
-        <title>Sourcetypes discovered (7 days)</title>
-        <search base="recon"><query>| where discovered=1 | stats count</query></search>
-      </single>
+        <title>Sourcetypes tracked</title>
+        <search base="recon"><query>| stats count</query></search>
+        <drilldown>
+          <set token="form.status_filter">*</set>
+          <set token="status_filter">*</set>
+          <set token="form.tab">recon</set>
+          <set token="tab_recon">true</set>
+          <unset token="tab_contracts"></unset>
+          <unset token="tab_cim"></unset>
+          <unset token="tab_help"></unset>
+        </drilldown>      </single>
     </panel>
     <panel>
       <single>
-        <title>Ingested with no contract</title>
-        <search base="recon"><query>| where discovered=1 AND contract="NO CONTRACT" AND sourcetype_check="ok" | stats count</query></search>
+        <title>Complete</title>
+        <search base="recon"><query>| where status_bucket="Complete" | stats count</query></search>
         <option name="colorMode">block</option>
-        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
-        <option name="rangeValues">[0,5]</option>
+        <option name="rangeColors">["0x53a051","0x53a051"]</option>
+        <option name="rangeValues">[0]</option>
         <option name="useColors">1</option>
-      </single>
+        <drilldown>
+          <set token="form.status_filter">Complete</set>
+          <set token="status_filter">Complete</set>
+          <set token="form.tab">recon</set>
+          <set token="tab_recon">true</set>
+          <unset token="tab_contracts"></unset>
+          <unset token="tab_cim"></unset>
+          <unset token="tab_help"></unset>
+        </drilldown>      </single>
     </panel>
     <panel>
       <single>
-        <title>Contracted, no data seen</title>
-        <search base="recon"><query>| where discovered=0 | stats count</query></search>
+        <title>Remaining work</title>
+        <search base="recon"><query>| where status_bucket!="Complete" | stats count</query></search>
         <option name="colorMode">block</option>
         <option name="rangeColors">["0x53a051","0xf8be34"]</option>
         <option name="rangeValues">[0]</option>
@@ -126,23 +133,212 @@
     </panel>
     <panel>
       <single>
-        <title>Malformed or rejected sourcetypes</title>
-        <search base="recon"><query>| where sourcetype_check!="ok" | stats count</query></search>
+        <title>% complete</title>
+        <search base="recon"><query>| stats count(eval(status_bucket="Complete")) as done, count as total | eval pct=if(total=0,0,round(done/total*100,1)) | fields pct</query></search>
+        <option name="unit">%</option>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0xdc4e41","0xf8be34","0x53a051"]</option>
+        <option name="rangeValues">[50,80]</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <single>
+        <title>Malformed or rejected</title>
+        <search base="recon"><query>| where status_bucket="Malformed or rejected" | stats count</query></search>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x53a051","0xaf575a"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="useColors">1</option>
+        <drilldown>
+          <set token="form.status_filter">Malformed or rejected</set>
+          <set token="status_filter">Malformed or rejected</set>
+          <set token="form.tab">recon</set>
+          <set token="tab_recon">true</set>
+          <unset token="tab_contracts"></unset>
+          <unset token="tab_cim"></unset>
+          <unset token="tab_help"></unset>
+        </drilldown>      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Ingested, no contract</title>
+        <search base="recon"><query>| where status_bucket="Ingested, no contract" | stats count</query></search>
         <option name="colorMode">block</option>
         <option name="rangeColors">["0x53a051","0xdc4e41"]</option>
         <option name="rangeValues">[0]</option>
         <option name="useColors">1</option>
-      </single>
+        <drilldown>
+          <set token="form.status_filter">Ingested, no contract</set>
+          <set token="status_filter">Ingested, no contract</set>
+          <set token="form.tab">recon</set>
+          <set token="tab_recon">true</set>
+          <unset token="tab_contracts"></unset>
+          <unset token="tab_cim"></unset>
+          <unset token="tab_help"></unset>
+        </drilldown>      </single>
     </panel>
     <panel>
       <single>
-        <title>CIM normalization gaps</title>
-        <search base="recon"><query>| where cim_flag IN ("NO CIM COVERAGE","CRITICAL LOW","VERY LOW") | stats count</query></search>
+        <title>Contract extension needed</title>
+        <search base="recon"><query>| where status_bucket="Contract extension needed" | stats count</query></search>
         <option name="colorMode">block</option>
-        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
-        <option name="rangeValues">[0,5]</option>
+        <option name="rangeColors">["0x53a051","0xf1813f"]</option>
+        <option name="rangeValues">[0]</option>
         <option name="useColors">1</option>
-      </single>
+        <drilldown>
+          <set token="form.status_filter">Contract extension needed</set>
+          <set token="status_filter">Contract extension needed</set>
+          <set token="form.tab">recon</set>
+          <set token="tab_recon">true</set>
+          <unset token="tab_contracts"></unset>
+          <unset token="tab_cim"></unset>
+          <unset token="tab_help"></unset>
+        </drilldown>      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Contracted, no data seen</title>
+        <search base="recon"><query>| where status_bucket="Contracted, no data seen" | stats count</query></search>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x53a051","0x006d9c"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="useColors">1</option>
+        <drilldown>
+          <set token="form.status_filter">Contracted, no data seen</set>
+          <set token="status_filter">Contracted, no data seen</set>
+          <set token="form.tab">recon</set>
+          <set token="tab_recon">true</set>
+          <unset token="tab_contracts"></unset>
+          <unset token="tab_cim"></unset>
+          <unset token="tab_help"></unset>
+        </drilldown>      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Not yet cataloged</title>
+        <search base="recon"><query>| where status_bucket="Not yet cataloged" | stats count</query></search>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x53a051","0x7b56db"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="useColors">1</option>
+        <drilldown>
+          <set token="form.status_filter">Not yet cataloged</set>
+          <set token="status_filter">Not yet cataloged</set>
+          <set token="form.tab">recon</set>
+          <set token="tab_recon">true</set>
+          <unset token="tab_contracts"></unset>
+          <unset token="tab_cim"></unset>
+          <unset token="tab_help"></unset>
+        </drilldown>      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Awaiting CDE approval</title>
+        <search base="recon"><query>| where status_bucket="Awaiting CDE approval" | stats count</query></search>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x53a051","0x708794"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="useColors">1</option>
+        <drilldown>
+          <set token="form.status_filter">Awaiting CDE approval</set>
+          <set token="status_filter">Awaiting CDE approval</set>
+          <set token="form.tab">recon</set>
+          <set token="tab_recon">true</set>
+          <unset token="tab_contracts"></unset>
+          <unset token="tab_cim"></unset>
+          <unset token="tab_help"></unset>
+        </drilldown>      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>CIM normalization gap</title>
+        <search base="recon"><query>| where status_bucket="CIM normalization gap" | stats count</query></search>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x53a051","0xf8be34"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="useColors">1</option>
+        <drilldown>
+          <set token="form.status_filter">CIM normalization gap</set>
+          <set token="status_filter">CIM normalization gap</set>
+          <set token="form.tab">recon</set>
+          <set token="tab_recon">true</set>
+          <unset token="tab_contracts"></unset>
+          <unset token="tab_cim"></unset>
+          <unset token="tab_help"></unset>
+        </drilldown>      </single>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Status summary - who owns the next step</title>
+      <table>
+        <search base="recon"><query>| stats count by bucket_order status_bucket owner next_step
+| eventstats sum(count) as total
+| eval pct_of_total=round(count/total*100,1)."%"
+| sort bucket_order
+| table status_bucket count pct_of_total owner next_step</query></search>
+        <option name="count">10</option>
+        <option name="drilldown">row</option>
+        <format type="color" field="status_bucket">
+          <colorPalette type="map">{"Malformed or rejected":#af575a, "Ingested, no contract":#dc4e41, "Contract extension needed":#f1813f, "Contracted, no data seen":#006d9c, "Not yet cataloged":#7b56db, "Awaiting CDE approval":#708794, "CIM normalization gap":#f8be34, "Complete":#53a051}</colorPalette>
+        </format>
+        <drilldown>
+          <set token="form.status_filter">$row.status_bucket$</set>
+          <set token="status_filter">$row.status_bucket$</set>
+          <set token="form.tab">recon</set>
+          <set token="tab_recon">true</set>
+          <unset token="tab_contracts"></unset>
+          <unset token="tab_cim"></unset>
+          <unset token="tab_help"></unset>
+        </drilldown>
+      </table>
+    </panel>
+    <panel>
+      <title>Progress by tenant (top 25 by sourcetypes tracked)</title>
+      <chart>
+        <search base="recon"><query>| eval tenant=coalesce(ae_name,uhgid)
+| chart count over tenant by status_bucket
+| addtotals fieldname=_total
+| sort - _total
+| head 25
+| table tenant "Complete" "CIM normalization gap" "Awaiting CDE approval" "Not yet cataloged" "Contracted, no data seen" "Contract extension needed" "Ingested, no contract" "Malformed or rejected"</query></search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.legend.placement">bottom</option>
+        <option name="charting.fieldColors">{"Malformed or rejected":0xaf575a, "Ingested, no contract":0xdc4e41, "Contract extension needed":0xf1813f, "Contracted, no data seen":0x006d9c, "Not yet cataloged":0x7b56db, "Awaiting CDE approval":0x708794, "CIM normalization gap":0xf8be34, "Complete":0x53a051}</option>
+        <option name="height">400</option>
+      </chart>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Progress over time (daily snapshot from DC-102; uses the tenant filter only)</title>
+      <chart>
+        <search>
+          <query>index=summary_datacatalog source="dc_cim_progress"
+| eval f="$index_filter$"
+| where f="sec_*" OR f=="sec_*_".uhgid
+| eval day=relative_time(_time,"@d")
+| eventstats max(snapshot) as last_snapshot by day
+| where snapshot=last_snapshot
+| eval _time=day
+| timechart span=1d sum(count) by status_bucket
+| table _time "Complete" "CIM normalization gap" "Awaiting CDE approval" "Not yet cataloged" "Contracted, no data seen" "Contract extension needed" "Ingested, no contract" "Malformed or rejected"</query>
+          <earliest>-90d@d</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.legend.placement">bottom</option>
+        <option name="charting.fieldColors">{"Malformed or rejected":0xaf575a, "Ingested, no contract":0xdc4e41, "Contract extension needed":0xf1813f, "Contracted, no data seen":0x006d9c, "Not yet cataloged":0x7b56db, "Awaiting CDE approval":0x708794, "CIM normalization gap":0xf8be34, "Complete":0x53a051}</option>
+        <option name="charting.axisTitleX.visibility">collapsed</option>
+      </chart>
     </panel>
   </row>
 
@@ -190,15 +386,18 @@
        ==================================================== -->
   <row depends="$tab_recon$">
     <panel>
-      <title>Every sourcetype discovered or contracted - worst gaps first</title>
+      <title>Every sourcetype discovered or contracted - status: $status_filter$ (worst gaps first)</title>
       <table>
         <search base="recon">
-          <query>| eval gap_rank=case(sourcetype_check!="ok",1, contract="NO CONTRACT",2, contract="OTHER TENANT ONLY",3, discovered=0,4, in_catalog="no",5, gap="CIM normalization gap",6, gap="OK",9, 1=1,7)
-| sort gap_rank - events_7d
-| table priority ae_name index sourcetype events_7d last_seen sourcetype_check in_catalog contract contract_ticket cde_approved expected_cim cim_models_scored cim_score cim_flag gap</query>
+          <query>| search status_bucket="$status_filter$"
+| sort bucket_order - events_7d
+| table status_bucket owner priority ae_name index sourcetype events_7d last_seen sourcetype_check in_catalog contract contract_ticket cde_approved expected_cim cim_models_scored cim_score cim_flag gap</query>
         </search>
         <option name="count">50</option>
         <option name="drilldown">none</option>
+        <format type="color" field="status_bucket">
+          <colorPalette type="map">{"Malformed or rejected":#af575a, "Ingested, no contract":#dc4e41, "Contract extension needed":#f1813f, "Contracted, no data seen":#006d9c, "Not yet cataloged":#7b56db, "Awaiting CDE approval":#708794, "CIM normalization gap":#f8be34, "Complete":#53a051}</colorPalette>
+        </format>
         <format type="color" field="sourcetype_check">
           <colorPalette type="map">{"MALFORMED":#DC4E41,"REJECTED":#F1813F,"ok":#53A051}</colorPalette>
         </format>
@@ -215,20 +414,6 @@
           <colorPalette type="map">{"HIGH":#DC4E41,"MEDIUM":#F8BE34,"OK":#53A051}</colorPalette>
         </format>
       </table>
-    </panel>
-  </row>
-  <row depends="$tab_recon$">
-    <panel>
-      <title>Gaps by tenant</title>
-      <chart>
-        <search base="recon">
-          <query>| where gap!="OK" | eval tenant=coalesce(ae_name,uhgid) | eval gap_type=case(match(gap,"^Fix|^Rejected"),"Sourcetype problem", match(gap,"^Ingested"),"No contract", match(gap,"^Contracted for another"),"Contract for another tenant", match(gap,"^Contracted but no data"),"Contracted, no data", match(gap,"^Contracted but not cataloged"),"Not cataloged", match(gap,"CIM"),"CIM gap", 1=1,"Awaiting CDE")
-| chart count over tenant by gap_type</query>
-        </search>
-        <option name="charting.chart">bar</option>
-        <option name="charting.chart.stackMode">stacked</option>
-        <option name="charting.legend.placement">bottom</option>
-      </chart>
     </panel>
   </row>
 
@@ -636,6 +821,22 @@
     <panel>
       <title>How to read this dashboard</title>
       <html>
+        <h3>Executive summary</h3>
+        <p>Each count is one sourcetype in one tenant index (the same sourcetype in two indexes counts twice). It covers every sourcetype seen in the last 7 days plus every sourcetype in the contract master. Each one gets exactly one status: the first step it has not passed, in the order below. So the status tiles add up to <b>Remaining work</b>, and Complete + Remaining = <b>Sourcetypes tracked</b>. Click any tile, or a row in the status summary, to list those sourcetypes on the reconciliation tab.</p>
+        <table class="table table-condensed">
+          <tr><th>Status</th><th>Meaning</th><th>Owner of the next step</th></tr>
+          <tr><td>Malformed or rejected</td><td>The sourcetype name is raw event text, or the sourcetype was reviewed and rejected.</td><td>Splunk admin / tenant AE</td></tr>
+          <tr><td>Ingested, no contract</td><td>Data is arriving, but no contract exists for this sourcetype anywhere.</td><td>Tenant AE + SIEM validation</td></tr>
+          <tr><td>Contract extension needed</td><td>Contracted for another tenant, not this one.</td><td>SIEM validation</td></tr>
+          <tr><td>Contracted, no data seen</td><td>A contract exists, but no data arrived in 7 days.</td><td>Tenant AE</td></tr>
+          <tr><td>Not yet cataloged</td><td>Contracted and flowing, but not in the data catalog.</td><td>Data catalog team</td></tr>
+          <tr><td>Awaiting CDE approval</td><td>Everything else is done; CDE has not signed off.</td><td>CDE</td></tr>
+          <tr><td>CIM normalization gap</td><td>CIM score under 50, or expected to feed a data model it does not reach.</td><td>Normalization team</td></tr>
+          <tr><td>Complete</td><td>Contracted, cataloged, CDE approved and CIM normalized (or not expected to feed a data model).</td><td>-</td></tr>
+        </table>
+        <p>These differ from the Catalog home page on purpose: that page counts datasets (tenant + sourcetype) in the catalog and shadow datasets seen in the last 24 hours. This page counts sourcetypes per tenant index over 7 days, against the contract master.</p>
+        <p><b>Progress over time</b> is filled by DC-102, which saves the status counts once a day. It starts empty and builds from the first run.</p>
+
         <h3>Sourcetype reconciliation</h3>
         <p>Lists every sourcetype the tenant sent in the last 7 days, plus every sourcetype in the contract master for that tenant, so gaps show in both directions. Each row is checked against the contract master (GitHub sync, DC-37), the catalog, sourcetype rejections, and the CIM scorecard (DC-101).</p>
         <table class="table table-condensed">
