@@ -142,6 +142,11 @@ DC-37 replaces the hand-maintained file with the GitHub copy, so make sure that 
   the search window, so any future-dated event is ignored, listed or not. New macro
   `dc_drop_future_log_pairs` drops the listed junk pairs.
 - Applied to DC-01, DC-03, DC-07, DC-36 and DC-38, and to both live panels on Index Standard.
+- **CIM Coverage Command Center:** the reconciliation search gets both filters. The scorecard
+  panel, all 11 live data-model panels, DC-101a-k and DC-101z drop the junk pairs. DC-101z also
+  removes their existing scorecard rows. Data-model `tstats` cannot filter on index time
+  (`_indextime` is not in accelerated summaries), so future-dated events on the 7 real
+  sourcetypes can still count toward their CIM totals until they age out.
 - New DC-38c and DC-38d (daily) remove the junk pairs' leftover rows from `dc_observed`, so DC-02
   stops reporting them as OBSERVED_NOT_DECLARED, and from `dc_index_conformance`.
 - Not changed: DC-02 history already written to `summary_datacatalog`, and the 30-day trend on

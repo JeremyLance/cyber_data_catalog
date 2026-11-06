@@ -57,7 +57,8 @@
        gaps show in both directions.
        ==================================================== -->
   <search id="recon">
-    <query>| tstats count as events_7d, max(_time) as last_seen where `dc_scope_indexes` index=$index_filter$ sourcetype=$sourcetype_filter$ earliest=-7d by index sourcetype
+    <query>| tstats count as events_7d, max(_time) as last_seen where `dc_scope_indexes` `dc_indexed_within(-7d)` index=$index_filter$ sourcetype=$sourcetype_filter$ earliest=-7d by index sourcetype
+| `dc_drop_future_log_pairs`
 | eval discovered=1
 | append [ | inputlookup dc_contract_master | eval index=lower(index) | search index=$index_filter$ sourcetype=$sourcetype_filter$ | fields index sourcetype ]
 | stats sum(events_7d) as events_7d, max(last_seen) as last_seen, max(discovered) as discovered by index sourcetype
@@ -327,6 +328,7 @@
         <search>
           <query>| inputlookup dc_cim_coverage_scorecard_lookup
 | search index=$index_filter$ sourcetype=$sourcetype_filter$
+| `dc_drop_future_log_pairs`
 | eval investigation_flag=case(
     has_any_coverage=0,"NO CIM COVERAGE",
     coverage_score&lt;20,"CRITICAL LOW",
@@ -362,6 +364,7 @@
 | append [ | tstats summariesonly=true count as has_dest from datamodel=Authentication where index=$index_filter$ sourcetype=$sourcetype_filter$ Authentication.dest!="unknown" by index sourcetype ]
 | append [ | tstats summariesonly=true count as has_app from datamodel=Authentication where index=$index_filter$ sourcetype=$sourcetype_filter$ Authentication.app!="unknown" by index sourcetype ]
 | stats sum(total) as total, sum(has_user) as has_user, sum(has_action) as has_action, sum(has_src) as has_src, sum(has_dest) as has_dest, sum(has_app) as has_app by index sourcetype
+| `dc_drop_future_log_pairs`
 | eval pct_user=round(100*has_user/total,2), pct_action=round(100*has_action/total,2), pct_src=round(100*has_src/total,2), pct_dest=round(100*has_dest/total,2), pct_app=round(100*has_app/total,2)
 | eval coverage_score=round((pct_user*0.30)+(pct_action*0.25)+(pct_src*0.20)+(pct_dest*0.15)+(pct_app*0.10),2)
 | eval investigation_flag=case(coverage_score&lt;20,"CRITICAL LOW",coverage_score&lt;50,"VERY LOW",coverage_score&lt;80,"LOW",true(),"OK")
@@ -384,6 +387,7 @@
 | append [ | tstats summariesonly=true count as has_user from datamodel=Alerts where index=$index_filter$ sourcetype=$sourcetype_filter$ Alerts.user!="unknown" by index sourcetype ]
 | append [ | tstats summariesonly=true count as has_dest from datamodel=Alerts where index=$index_filter$ sourcetype=$sourcetype_filter$ Alerts.dest!="unknown" by index sourcetype ]
 | stats sum(total) as total, sum(has_signature) as has_signature, sum(has_severity) as has_severity, sum(has_outcome) as has_outcome, sum(has_user) as has_user, sum(has_dest) as has_dest by index sourcetype
+| `dc_drop_future_log_pairs`
 | eval pct_signature=round(100*has_signature/total,2), pct_severity=round(100*has_severity/total,2), pct_outcome=round(100*has_outcome/total,2), pct_user=round(100*has_user/total,2), pct_dest=round(100*has_dest/total,2)
 | eval coverage_score=round((pct_signature*0.25)+(pct_severity*0.25)+(pct_outcome*0.25)+(pct_user*0.15)+(pct_dest*0.10),2)
 | eval investigation_flag=case(coverage_score&lt;20,"CRITICAL LOW",coverage_score&lt;50,"VERY LOW",coverage_score&lt;80,"LOW",true(),"OK")
@@ -409,6 +413,7 @@
 | append [ | tstats summariesonly=true count as has_app from datamodel=Network_Traffic.All_Traffic where index=$index_filter$ sourcetype=$sourcetype_filter$ All_Traffic.app!="unknown" by index sourcetype ]
 | append [ | tstats summariesonly=true count as has_bytes from datamodel=Network_Traffic.All_Traffic where index=$index_filter$ sourcetype=$sourcetype_filter$ All_Traffic.bytes&gt;0 by index sourcetype ]
 | stats sum(total) as total, sum(has_src) as has_src, sum(has_dest) as has_dest, sum(has_action) as has_action, sum(has_app) as has_app, sum(has_bytes) as has_bytes by index sourcetype
+| `dc_drop_future_log_pairs`
 | eval pct_src=round(100*has_src/total,2), pct_dest=round(100*has_dest/total,2), pct_action=round(100*has_action/total,2), pct_app=round(100*has_app/total,2), pct_bytes=round(100*has_bytes/total,2)
 | eval coverage_score=round((pct_src*0.25)+(pct_dest*0.25)+(pct_action*0.25)+(pct_app*0.15)+(pct_bytes*0.10),2)
 | eval investigation_flag=case(coverage_score&lt;20,"CRITICAL LOW",coverage_score&lt;50,"VERY LOW",coverage_score&lt;80,"LOW",true(),"OK")
@@ -431,6 +436,7 @@
 | append [ | tstats summariesonly=true count as has_user from datamodel=Network_Sessions where index=$index_filter$ sourcetype=$sourcetype_filter$ All_Sessions.user!="unknown" by index sourcetype ]
 | append [ | tstats summariesonly=true count as has_signature from datamodel=Network_Sessions where index=$index_filter$ sourcetype=$sourcetype_filter$ All_Sessions.signature!="unknown" by index sourcetype ]
 | stats sum(total) as total, sum(has_src) as has_src, sum(has_dest) as has_dest, sum(has_action) as has_action, sum(has_user) as has_user, sum(has_signature) as has_signature by index sourcetype
+| `dc_drop_future_log_pairs`
 | eval pct_src=round(100*has_src/total,2), pct_dest=round(100*has_dest/total,2), pct_action=round(100*has_action/total,2), pct_user=round(100*has_user/total,2), pct_signature=round(100*has_signature/total,2)
 | eval coverage_score=round((pct_src*0.25)+(pct_dest*0.25)+(pct_action*0.25)+(pct_user*0.15)+(pct_signature*0.10),2)
 | eval investigation_flag=case(coverage_score&lt;20,"CRITICAL LOW",coverage_score&lt;50,"VERY LOW",coverage_score&lt;80,"LOW",true(),"OK")
@@ -457,6 +463,7 @@
 | append [ | tstats summariesonly=true count as has_action from datamodel=Intrusion_Detection where index=$index_filter$ sourcetype=$sourcetype_filter$ IDS_Attacks.action!="unknown" by index sourcetype ]
 | append [ | tstats summariesonly=true count as has_vendor_product from datamodel=Intrusion_Detection where index=$index_filter$ sourcetype=$sourcetype_filter$ IDS_Attacks.vendor_product!="unknown" by index sourcetype ]
 | stats sum(total) as total, sum(has_signature) as has_signature, sum(has_severity) as has_severity, sum(has_src) as has_src, sum(has_dest) as has_dest, sum(has_action) as has_action, sum(has_vendor_product) as has_vendor_product by index sourcetype
+| `dc_drop_future_log_pairs`
 | eval pct_signature=round(100*has_signature/total,2), pct_severity=round(100*has_severity/total,2), pct_src=round(100*has_src/total,2), pct_dest=round(100*has_dest/total,2), pct_action=round(100*has_action/total,2), pct_vendor_product=round(100*has_vendor_product/total,2)
 | eval coverage_score=round((pct_signature*0.25)+(pct_severity*0.25)+(pct_src*0.20)+(pct_dest*0.20)+(pct_action*0.05)+(pct_vendor_product*0.05),2)
 | eval investigation_flag=case(coverage_score&lt;20,"CRITICAL LOW",coverage_score&lt;50,"VERY LOW",coverage_score&lt;80,"LOW",true(),"OK")
@@ -480,6 +487,7 @@
 | append [ | tstats summariesonly=true count as has_file_hash from datamodel=Malware where index=$index_filter$ sourcetype=$sourcetype_filter$ Malware_Attacks.file_hash!="unknown" by index sourcetype ]
 | append [ | tstats summariesonly=true count as has_user from datamodel=Malware where index=$index_filter$ sourcetype=$sourcetype_filter$ Malware_Attacks.user!="unknown" by index sourcetype ]
 | stats sum(total) as total, sum(has_signature) as has_signature, sum(has_severity) as has_severity, sum(has_dest) as has_dest, sum(has_file_name) as has_file_name, sum(has_file_hash) as has_file_hash, sum(has_user) as has_user by index sourcetype
+| `dc_drop_future_log_pairs`
 | eval pct_signature=round(100*has_signature/total,2), pct_severity=round(100*has_severity/total,2), pct_dest=round(100*has_dest/total,2), pct_file_name=round(100*has_file_name/total,2), pct_file_hash=round(100*has_file_hash/total,2), pct_user=round(100*has_user/total,2)
 | eval coverage_score=round((pct_signature*0.25)+(pct_severity*0.25)+(pct_dest*0.20)+(pct_file_name*0.15)+(pct_file_hash*0.10)+(pct_user*0.05),2)
 | eval investigation_flag=case(coverage_score&lt;20,"CRITICAL LOW",coverage_score&lt;50,"VERY LOW",coverage_score&lt;80,"LOW",true(),"OK")
@@ -505,6 +513,7 @@
 | append [ | tstats summariesonly=true count as has_parent from datamodel=Endpoint.Processes where index=$index_filter$ sourcetype=$sourcetype_filter$ Processes.parent_process_name!="unknown" by index sourcetype ]
 | append [ | tstats summariesonly=true count as has_pid from datamodel=Endpoint.Processes where index=$index_filter$ sourcetype=$sourcetype_filter$ Processes.process_id!="unknown" by index sourcetype ]
 | stats sum(total) as total, sum(has_process) as has_process, sum(has_dest) as has_dest, sum(has_user) as has_user, sum(has_parent) as has_parent, sum(has_pid) as has_pid by index sourcetype
+| `dc_drop_future_log_pairs`
 | eval pct_process=round(100*has_process/total,2), pct_dest=round(100*has_dest/total,2), pct_user=round(100*has_user/total,2), pct_parent=round(100*has_parent/total,2), pct_pid=round(100*has_pid/total,2)
 | eval coverage_score=round((pct_process*0.25)+(pct_dest*0.25)+(pct_user*0.20)+(pct_parent*0.20)+(pct_pid*0.10),2)
 | eval investigation_flag=case(coverage_score&lt;20,"CRITICAL LOW",coverage_score&lt;50,"VERY LOW",coverage_score&lt;80,"LOW",true(),"OK")
@@ -528,6 +537,7 @@
 | append [ | tstats summariesonly=true count as has_status from datamodel=Web where index=$index_filter$ sourcetype=$sourcetype_filter$ Web.status!="unknown" by index sourcetype ]
 | append [ | tstats summariesonly=true count as has_src from datamodel=Web where index=$index_filter$ sourcetype=$sourcetype_filter$ Web.src!="unknown" by index sourcetype ]
 | stats sum(total) as total, sum(has_url) as has_url, sum(has_dest) as has_dest, sum(has_user) as has_user, sum(has_method) as has_method, sum(has_status) as has_status, sum(has_src) as has_src by index sourcetype
+| `dc_drop_future_log_pairs`
 | eval pct_url=round(100*has_url/total,2), pct_dest=round(100*has_dest/total,2), pct_user=round(100*has_user/total,2), pct_method=round(100*has_method/total,2), pct_status=round(100*has_status/total,2), pct_src=round(100*has_src/total,2)
 | eval coverage_score=round((pct_url*0.25)+(pct_dest*0.20)+(pct_user*0.15)+(pct_method*0.15)+(pct_status*0.15)+(pct_src*0.10),2)
 | eval investigation_flag=case(coverage_score&lt;20,"CRITICAL LOW",coverage_score&lt;50,"VERY LOW",coverage_score&lt;80,"LOW",true(),"OK")
@@ -554,6 +564,7 @@
 | append [ | tstats summariesonly=true count as has_dest from datamodel=Change where index=$index_filter$ sourcetype=$sourcetype_filter$ All_Changes.dest!="unknown" by index sourcetype ]
 | append [ | tstats summariesonly=true count as has_src from datamodel=Change where index=$index_filter$ sourcetype=$sourcetype_filter$ All_Changes.src!="unknown" by index sourcetype ]
 | stats sum(total) as total, sum(has_object) as has_object, sum(has_action) as has_action, sum(has_result) as has_result, sum(has_user) as has_user, sum(has_dest) as has_dest, sum(has_src) as has_src by index sourcetype
+| `dc_drop_future_log_pairs`
 | eval pct_object=round(100*has_object/total,2), pct_action=round(100*has_action/total,2), pct_result=round(100*has_result/total,2), pct_user=round(100*has_user/total,2), pct_dest=round(100*has_dest/total,2), pct_src=round(100*has_src/total,2)
 | eval coverage_score=round((pct_object*0.25)+(pct_action*0.20)+(pct_result*0.20)+(pct_user*0.15)+(pct_dest*0.10)+(pct_src*0.10),2)
 | eval investigation_flag=case(coverage_score&lt;20,"CRITICAL LOW",coverage_score&lt;50,"VERY LOW",coverage_score&lt;80,"LOW",true(),"OK")
@@ -577,6 +588,7 @@
 | append [ | tstats summariesonly=true count as has_src from datamodel=Email where index=$index_filter$ sourcetype=$sourcetype_filter$ All_Email.src!="unknown" by index sourcetype ]
 | append [ | tstats summariesonly=true count as has_dest from datamodel=Email where index=$index_filter$ sourcetype=$sourcetype_filter$ All_Email.dest!="unknown" by index sourcetype ]
 | stats sum(total) as total, sum(has_src_user) as has_src_user, sum(has_recipient) as has_recipient, sum(has_action) as has_action, sum(has_subject) as has_subject, sum(has_src) as has_src, sum(has_dest) as has_dest by index sourcetype
+| `dc_drop_future_log_pairs`
 | eval pct_src_user=round(100*has_src_user/total,2), pct_recipient=round(100*has_recipient/total,2), pct_action=round(100*has_action/total,2), pct_subject=round(100*has_subject/total,2), pct_src=round(100*has_src/total,2), pct_dest=round(100*has_dest/total,2)
 | eval coverage_score=round((pct_src_user*0.25)+(pct_recipient*0.25)+(pct_action*0.20)+(pct_subject*0.10)+(pct_src*0.10)+(pct_dest*0.10),2)
 | eval investigation_flag=case(coverage_score&lt;20,"CRITICAL LOW",coverage_score&lt;50,"VERY LOW",coverage_score&lt;80,"LOW",true(),"OK")
@@ -603,6 +615,7 @@
 | append [ | tstats summariesonly=true count as has_dest from datamodel=Network_Resolution where index=$index_filter$ sourcetype=$sourcetype_filter$ DNS.dest!="unknown" by index sourcetype ]
 | append [ | tstats summariesonly=true count as has_record_type from datamodel=Network_Resolution where index=$index_filter$ sourcetype=$sourcetype_filter$ DNS.record_type!="unknown" by index sourcetype ]
 | stats sum(total) as total, sum(has_query) as has_query, sum(has_answer) as has_answer, sum(has_reply_code) as has_reply_code, sum(has_src) as has_src, sum(has_dest) as has_dest, sum(has_record_type) as has_record_type by index sourcetype
+| `dc_drop_future_log_pairs`
 | eval pct_query=round(100*has_query/total,2), pct_answer=round(100*has_answer/total,2), pct_reply_code=round(100*has_reply_code/total,2), pct_src=round(100*has_src/total,2), pct_dest=round(100*has_dest/total,2), pct_record_type=round(100*has_record_type/total,2)
 | eval coverage_score=round((pct_query*0.30)+(pct_answer*0.20)+(pct_reply_code*0.15)+(pct_src*0.15)+(pct_dest*0.10)+(pct_record_type*0.10),2)
 | eval investigation_flag=case(coverage_score&lt;20,"CRITICAL LOW",coverage_score&lt;50,"VERY LOW",coverage_score&lt;80,"LOW",true(),"OK")
