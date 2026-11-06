@@ -1,4 +1,4 @@
-# Cyber Data & Detection Catalog - v0.5.9
+# Cyber Data & Detection Catalog - v0.6.0
 
 Install: copy `cyber_data_catalog/` to `$SPLUNK_HOME/etc/apps/` and restart, or
 upload the tarball via Apps -> Manage Apps -> Install app from file.
@@ -37,6 +37,7 @@ On a fresh install, review the macros below before the first scheduled run.
 |---|---|
 | **DC-00 / 00b / 00c** | **seed loaders and integrity check — run these first** |
 | DC-01/02/03 | discovery, reconciliation, shadow-data alert |
+| DC-102 | daily CIM Command Center status snapshot (progress trend) |
 | DC-38c/38d | purge the future-dated junk pairs from `dc_observed` and `dc_index_conformance` |
 | DC-04/05/06 | volume baselines, Tier 0 outage, tiered digest |
 | DC-07/08/09 | environment-aware discovery, dual-home divergence, change-window audit |
@@ -128,6 +129,20 @@ To resume: set the input to `disabled = 0` and enable DC-37 and DC-39. Once the 
 DC-37 replaces the hand-maintained file with the GitHub copy, so make sure that copy is current.
 
 ## Changelog
+### 0.6.0
+- **CIM Coverage Command Center executive summary.** Every tracked sourcetype (one per tenant
+  index, last 7 days plus the contract master) now has exactly one status. The status is the first
+  step it has not passed: Malformed or rejected, Ingested no contract, Contract extension needed,
+  Contracted no data seen, Not yet cataloged, Awaiting CDE approval, CIM normalization gap, or Complete.
+  The tiles add up: Complete + Remaining = Sourcetypes tracked, plus a % complete tile.
+- New panels: a status summary with the owner of each next step, progress by tenant, and progress
+  over time. Clicking a tile or a summary row filters the reconciliation table to that status.
+  New Status filter. The reconciliation table gains status and owner columns.
+- The reconciliation logic moved into the `dc_cim_recon(index_filter, sourcetype_filter)` macro.
+  The dashboard and the new DC-102 daily snapshot share it, so the trend matches the tiles.
+- DC-102 writes to `summary_datacatalog` (`source=dc_cim_progress`). The trend starts empty.
+- "Gaps by tenant" was replaced by "Progress by tenant" in the summary.
+
 ### 0.5.9
 - **Future-dated logs no longer count as shadow data.** The resolved uhgid-000024 DQ issue left
   ~650M events with 2026-2027 timestamps (syslog with no year, and ~9,700 junk sourcetypes built
