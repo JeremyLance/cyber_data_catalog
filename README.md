@@ -1,4 +1,4 @@
-# Cyber Data & Detection Catalog - v0.6.1
+# Cyber Data & Detection Catalog - v0.6.2
 
 Install: copy `cyber_data_catalog/` to `$SPLUNK_HOME/etc/apps/` and restart, or
 upload the tarball via Apps -> Manage Apps -> Install app from file.
@@ -129,6 +129,19 @@ To resume: set the input to `disabled = 0` and enable DC-37 and DC-39. Once the 
 DC-37 replaces the hand-maintained file with the GitHub copy, so make sure that copy is current.
 
 ## Changelog
+### 0.6.2
+- CIM Command Center: **Complete now means a SIEM contract exists for the tenant + sourcetype**,
+  so it matches the contract master. Two stages, each with status tiles that add up to it:
+  - Needs contract: Malformed or rejected, Ingested - no contract, Contract extension needed.
+  - Contracts complete: Contracted - no data seen, Not yet cataloged, CIM normalization gap,
+    Awaiting CDE approval, Fully onboarded.
+- New Stage filter. The status summary and reconciliation table show the stage.
+- Status names no longer contain commas, which kept chart colors from matching the tiles.
+- Progress over time now shows Contracts complete vs Needs contract. DC-102 saves the stage.
+  Snapshots taken before 0.6.2 have no stage and are skipped.
+- Removed the evidence and scratch files from the repo root. The app reads only `lookups/`, and
+  every root copy of a seed file was an older version of the one in `lookups/`.
+
 ### 0.6.1
 - Fixed "tstats must be the first command" on DC-102 and the CIM Command Center summary.
   `dc_cim_recon` no longer starts with a pipe; callers use `` | `dc_cim_recon(...)` ``.
