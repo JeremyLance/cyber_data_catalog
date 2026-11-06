@@ -1,4 +1,4 @@
-# Cyber Data & Detection Catalog - v0.5.8
+# Cyber Data & Detection Catalog - v0.5.9
 
 Install: copy `cyber_data_catalog/` to `$SPLUNK_HOME/etc/apps/` and restart, or
 upload the tarball via Apps -> Manage Apps -> Install app from file.
@@ -37,6 +37,7 @@ On a fresh install, review the macros below before the first scheduled run.
 |---|---|
 | **DC-00 / 00b / 00c** | **seed loaders and integrity check — run these first** |
 | DC-01/02/03 | discovery, reconciliation, shadow-data alert |
+| DC-38c/38d | purge the future-dated junk pairs from `dc_observed` and `dc_index_conformance` |
 | DC-04/05/06 | volume baselines, Tier 0 outage, tiered digest |
 | DC-07/08/09 | environment-aware discovery, dual-home divergence, change-window audit |
 | DC-10..13 | knowledge object harvest, dependency graph |
@@ -127,6 +128,25 @@ To resume: set the input to `disabled = 0` and enable DC-37 and DC-39. Once the 
 DC-37 replaces the hand-maintained file with the GitHub copy, so make sure that copy is current.
 
 ## Changelog
+### 0.5.9
+- **Future-dated logs no longer count as shadow data.** The resolved uhgid-000024 DQ issue left
+  ~650M events with 2026-2027 timestamps (syslog with no year, and ~9,700 junk sourcetypes built
+  from raw log content). Core Splunk will not delete them, so they age out on their own; their
+  latest timestamp is June 2027. Until then they roll into every `earliest=-24h` window as their
+  timestamps come due.
+- New `dc_future_logs_ignore_seed.csv` (lookup `dc_future_logs_ignore`), built from the
+  Future_Logs_in_Splunk export: 10,000 index + sourcetype pairs. 9,993 are `ignore_scope=pair`
+  (junk, dropped entirely). 7 are `future_events_only`: real cataloged sourcetypes (`syslog`,
+  `linux:syslog`, `linux_secure`, `mcds_soap`, `appsense`, `meraki`) whose current data still counts.
+- New macro `dc_indexed_within(window)` in the tstats WHERE clause keeps only events indexed inside
+  the search window, so any future-dated event is ignored, listed or not. New macro
+  `dc_drop_future_log_pairs` drops the listed junk pairs.
+- Applied to DC-01, DC-03, DC-07, DC-36 and DC-38, and to both live panels on Index Standard.
+- New DC-38c and DC-38d (daily) remove the junk pairs' leftover rows from `dc_observed`, so DC-02
+  stops reporting them as OBSERVED_NOT_DECLARED, and from `dc_index_conformance`.
+- Not changed: DC-02 history already written to `summary_datacatalog`, and the 30-day trend on
+  Dataset Detail.
+
 ### 0.5.8
 - DC-101 split into DC-101a-k, one search per CIM data model, staggered 3 minutes apart every
   4 hours, each upserting into `dc_cim_coverage_scorecard_lookup`. A slow or failed data model no
