@@ -137,9 +137,9 @@ DC-37 replaces the hand-maintained file with the GitHub copy, so make sure that 
 - Two new lookups, `dc_cirt_approved_detections` (the detections CIRT has approved and monitors) and
   `dc_splunk2_allow` (tenants and sourcetypes allowed into Splunk 2.0). Both ship seeded with the
   current files and refresh from GitHub through two new `dc_github_file_pull` inputs
-  (`cirt_approved_detections`, `cirt_splunk2_allow`, every 30 minutes).
-  **To turn on:** set each input's `file_path` to where CIRT keeps the file, set `disabled = 0`,
-  and enable DC-39b. The inputs use the GitHub token already stored on the Set Up page.
+  (`cirt_approved_detections`, `cirt_splunk2_allow`, every 30 minutes) from
+  `optum-eis/CIRT_Splunk_SIEM_project/CIRT/`. Both inputs and DC-39b ship enabled. The inputs use
+  the GitHub token already stored on the Set Up page.
 - The pull now refuses a file that is missing its `required_columns` or has no data rows, strips a
   UTF-8 byte-order mark, and compares content with the file on disk instead of a remembered sha.
   An app reinstall that puts the packaged seed back is therefore corrected on the next run.
@@ -182,8 +182,13 @@ DC-37 replaces the hand-maintained file with the GitHub copy, so make sure that 
   what Splunk sees for that AE (via the new `indexFamilies` mapping in `data.js`).
 - Navigator changes: AE UHGID field (suggests AEs from the catalog when in Splunk), a request ID,
   Import JSON, and the technology-to-index-family mapping.
-- `dc_intake_requests` is writable by admin, sc_admin and splunk_ops. Add the CREU / intake role
-  in `metadata/default.meta` before rollout.
+- `dc_intake_requests` is writable by azu_splunk_esro_siem, azu_splunk_esro_creu,
+  azu_splunk_esro_cde and sc_admin; everyone can read it.
+
+**Export CSV on every table**
+- `dc_table_export.js` now fetches a table's rows when you click Export instead of relying on
+  rows it caught at page load, and attaches to tables that appear later (behind tabs or token
+  conditions). Fixes tables on the CIM Command Center that showed the button but never exported.
 
 **Refreshing the auditor lookup from the workbook**
 Save this as `build_ae_program_seed.py` outside the app folder, run it against the workbook (needs

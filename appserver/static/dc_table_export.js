@@ -45,17 +45,32 @@ require([
         setTimeout(function () { URL.revokeObjectURL(url); a.remove(); }, 1000);
     }
 
-    function wire(element) {
-        if (element.$el.find('.dc-export-bar').length) { return; }
-        var managerId = element.settings.get('managerid');
-        var manager = managerId && mvc.Components.get(managerId);
-        if (!manager) { return; }
+    // Pull every row of a table's search. A fresh results model fetches as soon as the
+    // search is done (or immediately if it already is), so this does not depend on having
+    // caught a 'data' event earlier - tables behind tabs and searches that finished before
+    // this script loaded both export correctly.
+    function fetchAll(manager, done) {
+        var settled = false;
+        var model = manager.data('results', { output_mode: 'json_rows', count: 0 });
+        function finish(data, err) {
+            if (settled) { return; }
+            settled = true;
+            clearTimeout(timer);
+            model.off();
+            if (typeof model.destroy === 'function') { model.destroy(); }
+            done(data, err);
+        }
+        model.on('data', function () { finish(model.hasData() ? model.data() : null); });
+        model.on('error', function (msg) { finish(null, msg || 'search error'); });
+        var timer = setTimeout(function () {
+            finish(null, 'timed out - the search may still be running, try again when the table has loaded');
+        }, 60000);
+    }
 
-        // count: 0 = all rows, not just the page the table shows.
-        var results = manager.data('results', { output_mode: 'json_rows', count: 0 });
-        var latest = null;
-        results.on('data', function () { latest = results.hasData() ? results.data() : null; });
-        manager.on('search:start', function () { latest = null; });
+    function wire(element) {
+        if (!element || !element.$el || element.$el.find('.dc-export-bar').length) { return; }
+        var managerId = element.settings.get('managerid');
+        if (!managerId || !mvc.Components.get(managerId)) { return; }
 
         var btn = $('<button type="button" class="btn btn-small">Export CSV</button>');
         var bar = $('<div class="dc-export-bar"></div>')
@@ -64,17 +79,41 @@ require([
         element.$el.prepend(bar);
 
         btn.on('click', function () {
-            if (!latest || !latest.rows || !latest.rows.length) {
-                alert('No results to export yet. Wait for the table to finish loading.');
-                return;
-            }
-            var title = element.$el.closest('.dashboard-panel').find('.panel-title').first().text()
-                || element.$el.find('.panel-head h3').first().text();
-            download(toCsv(latest), fileName(title));
+            // Resolve the manager at click time: token changes can rebuild it.
+            var manager = mvc.Components.get(element.settings.get('managerid'));
+            if (!manager) { alert('This table has no search to export.'); return; }
+            var label = btn.text();
+            btn.prop('disabled', true).text('Exporting...');
+            fetchAll(manager, function (data, err) {
+                btn.prop('disabled', false).text(label);
+                if (err) { alert('Export failed: ' + err); return; }
+                if (!data || !data.rows || !data.rows.length) {
+                    alert('This table has no rows to export.');
+                    return;
+                }
+                var title = element.$el.closest('.dashboard-panel').find('.panel-title').first().text()
+                    || element.$el.find('.panel-head h3').first().text();
+                download(toCsv(data), fileName(title));
+            });
         });
     }
 
-    _.each(mvc.Components.getInstances(), function (c) {
-        if (c instanceof TableElement) { wire(c); }
+    function wireAll() {
+        _.each(mvc.Components.getInstances(), function (c) {
+            if (c instanceof TableElement) { wire(c); }
+        });
+    }
+
+    // Tables in rows behind tabs or token conditions can be created after page load,
+    // so look again whenever a token changes and for the first minute.
+    wireAll();
+    _.each(['default', 'submitted'], function (name) {
+        var tokens = mvc.Components.get(name);
+        if (tokens) { tokens.on('change', function () { _.defer(wireAll); }); }
     });
+    var scans = 0;
+    var scanTimer = setInterval(function () {
+        wireAll();
+        if (++scans >= 12) { clearInterval(scanTimer); }
+    }, 5000);
 });

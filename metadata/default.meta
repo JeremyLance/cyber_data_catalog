@@ -12,8 +12,12 @@ export = system
 export = system
 
 # v0.7.0: intake requests are written from the Telemetry Navigator page and the
-# Intake Tracker by the people running intake (SIEM team, CREU). Add their Splunk
-# role to write here, e.g. write : [ admin, sc_admin, splunk_ops, creu_intake ].
+# Intake Tracker by the SIEM, CREU and CDE teams. The lookup definition needs the
+# same write roles as the collection so outputlookup from the tracker works.
 [collections/dc_intake_requests]
-access = read : [ * ], write : [ admin, sc_admin, splunk_ops ]
+access = read : [ * ], write : [ azu_splunk_esro_siem, azu_splunk_esro_creu, azu_splunk_esro_cde, sc_admin ]
+export = system
+
+[transforms/dc_intake_requests_lookup]
+access = read : [ * ], write : [ azu_splunk_esro_siem, azu_splunk_esro_creu, azu_splunk_esro_cde, sc_admin ]
 export = system
