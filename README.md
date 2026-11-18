@@ -126,10 +126,10 @@ are derived from it by the `dc_contract_state` macro, matching on sourcetype + i
 with the packaged copy, so commit the updated CSV before every deploy. DC-37 rebuilds it from the
 GitHub pull every 2 hours when that pull returns rows (it never writes an empty file).
 
-**Currently paused (v0.5.5):** the Splunk-GitHub runners are disabled, so the file is maintained
-by hand. The `dc_github_file_pull://contracts_master` input, DC-37 and DC-39 ship disabled.
-To resume: set the input to `disabled = 0` and enable DC-37 and DC-39. Once the pull runs,
-DC-37 replaces the hand-maintained file with the GitHub copy, so make sure that copy is current.
+**GitHub sync is on (resumed in v0.7.0).** The `dc_github_file_pull://contracts_master` input pulls
+`Contracts/contracts_master.csv` every 2 hours, DC-37 rebuilds `dc_contracts_master.csv` from it
+15 minutes later, and DC-39 alerts if the pull has not succeeded in 6 hours. The GitHub copy is now
+the source of truth: hand edits to `dc_contracts_master.csv` are overwritten on the next DC-37 run.
 
 ## Changelog
 ### 0.7.0
@@ -184,6 +184,11 @@ DC-37 replaces the hand-maintained file with the GitHub copy, so make sure that 
   Import JSON, and the technology-to-index-family mapping.
 - `dc_intake_requests` is writable by azu_splunk_esro_siem, azu_splunk_esro_creu,
   azu_splunk_esro_cde and sc_admin; everyone can read it.
+
+**Contract master GitHub sync resumed**
+- The `contracts_master` input, DC-37 and DC-39 are enabled again (paused since v0.5.5). The
+  input now rejects a contract file missing `sourcetype`, `index`, `contract_issue`,
+  `notification_sent` or `cde_approval`, so a bad commit cannot replace the lookup.
 
 **Export CSV on every table**
 - `dc_table_export.js` now fetches a table's rows when you click Export instead of relying on
