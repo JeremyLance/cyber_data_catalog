@@ -1,0 +1,306 @@
+<form script="dc_table_export.js" theme="dark" version="1.1">
+  <label>Auditor - AE Program Rollup</label>
+  <description>One view of what every team is tracking for each acquired entity: data catalog, SIEM contracts, CIM normalization, CIRT detections and telemetry intake. "Measured" figures come from Splunk now. "Workbook" figures come from the lead auditor's AE_Log_Source_Matrix workbook (dc_ae_program lookup). Open "How these numbers are built" at the bottom for every definition and source.</description>
+
+  <search id="rollup">
+    <query>| `dc_auditor_rollup`</query>
+    <earliest>-3d</earliest>
+    <latest>now</latest>
+  </search>
+  <search id="filtered" base="rollup">
+    <query>| fillnull value="-" wave lob | search wave="$wave$" lob="$lob$" uhgid="$ae$" plan_status="$plan$"</query>
+  </search>
+
+  <fieldset submitButton="false" autoRun="true">
+    <input type="dropdown" token="wave" searchWhenChanged="true">
+      <label>Wave</label>
+      <choice value="*">All waves</choice>
+      <default>*</default>
+      <fieldForLabel>label</fieldForLabel>
+      <fieldForValue>wave</fieldForValue>
+      <search><query>| inputlookup dc_ae_program | stats count by wave | where wave!="" | eval label="Wave ".wave | sort wave</query></search>
+    </input>
+    <input type="dropdown" token="lob" searchWhenChanged="true">
+      <label>Line of business</label>
+      <choice value="*">All</choice>
+      <default>*</default>
+      <fieldForLabel>lob</fieldForLabel>
+      <fieldForValue>lob</fieldForValue>
+      <search><query>| inputlookup dc_ae_program | stats count by lob | where lob!="" | sort lob</query></search>
+    </input>
+    <input type="dropdown" token="ae" searchWhenChanged="true">
+      <label>Acquired entity</label>
+      <choice value="*">All</choice>
+      <default>*</default>
+      <fieldForLabel>label</fieldForLabel>
+      <fieldForValue>uhgid</fieldForValue>
+      <search base="rollup"><query>| eval label=ae_name." (".uhgid.")" | sort ae_name | fields label uhgid</query></search>
+    </input>
+    <input type="dropdown" token="plan" searchWhenChanged="true">
+      <label>Plan status</label>
+      <choice value="*">All</choice>
+      <choice value="Behind plan">Behind plan</choice>
+      <choice value="On plan">On plan</choice>
+      <choice value="No plan dates">No plan dates</choice>
+      <default>*</default>
+    </input>
+  </fieldset>
+
+  <!-- ============ HEADLINE ============ -->
+  <row>
+    <panel>
+      <single>
+        <title>Acquired entities</title>
+        <search base="filtered"><query>| stats count</query></search>
+        <option name="underLabel">in workbook or catalog</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Behind plan</title>
+        <search base="filtered"><query>| where plan_status="Behind plan" | stats count</query></search>
+        <option name="underLabel">a planned phase end has passed, phase not 100%</option>
+        <option name="colorMode">block</option>
+        <option name="useColors">1</option>
+        <option name="rangeColors">["0x53a051","0xdc4e41"]</option>
+        <option name="rangeValues">[0]</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Datasets flowing</title>
+        <search base="filtered"><query>| stats sum(flowing) as f, sum(datasets) as d | eval pct=if(d&gt;0,round(f/d*100,1),0) | fields pct</query></search>
+        <option name="numberPrecision">0.0</option>
+        <option name="unit">%</option>
+        <option name="underLabel">cataloged datasets seen in 24h</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Normalization complete</title>
+        <search base="filtered"><query>| stats sum(g1) as n, sum(datasets) as d | eval pct=if(d&gt;0,round(n/d*100,1),0) | fields pct</query></search>
+        <option name="numberPrecision">0.0</option>
+        <option name="unit">%</option>
+        <option name="underLabel">gate 1</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Detection complete</title>
+        <search base="filtered"><query>| stats sum(g2) as n, sum(datasets) as d | eval pct=if(d&gt;0,round(n/d*100,1),0) | fields pct</query></search>
+        <option name="numberPrecision">0.0</option>
+        <option name="unit">%</option>
+        <option name="underLabel">gate 2, incl. not needed</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>SOC complete</title>
+        <search base="filtered"><query>| stats sum(g3) as n, sum(datasets) as d | eval pct=if(d&gt;0,round(n/d*100,1),0) | fields pct</query></search>
+        <option name="numberPrecision">0.0</option>
+        <option name="unit">%</option>
+        <option name="underLabel">gate 3, incl. not needed</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>SIEM contract complete</title>
+        <search base="filtered"><query>| stats sum(siem_done) as n, sum(datasets) as d | eval pct=if(d&gt;0,round(n/d*100,1),0) | fields pct</query></search>
+        <option name="numberPrecision">0.0</option>
+        <option name="unit">%</option>
+        <option name="underLabel">datasets with a completed contract</option>
+      </single>
+    </panel>
+  </row>
+
+  <!-- ============ PER-AE ROLLUP ============ -->
+  <row>
+    <panel>
+      <title>Rollup by acquired entity - measured in Splunk now (% complete by phase)</title>
+      <table>
+        <search base="filtered"><query><![CDATA[| sort wave ae_name
+| table ae_name uhgid wave lob tracked_by datasets m_discovery m_ingest m_splunk2 m_normalize m_detection m_soc m_siem_contract m_cde m_cim_onboarded m_overall req_gaps intake_open plan_status next_milestone days_to_signoff
+| rename ae_name as "AE", uhgid as "UHGID", wave as "Wave", lob as "LOB", tracked_by as "Tracked in", datasets as "Datasets", m_discovery as "Discovery %", m_ingest as "Ingest 24h %", m_splunk2 as "Splunk 2.0 scope %", m_normalize as "Normalize %", m_detection as "Detection %", m_soc as "SOC %", m_siem_contract as "SIEM contract %", m_cde as "CDE approved %", m_cim_onboarded as "CIM fully onboarded %", m_overall as "Overall %", req_gaps as "Required gaps", intake_open as "Open intake", plan_status as "Plan", next_milestone as "Next milestone", days_to_signoff as "Days to sign-off"]]></query></search>
+        <option name="count">30</option>
+        <option name="wrap">true</option>
+        <format type="color" field="Plan"><colorPalette type="map">{"Behind plan":#DC4E41,"On plan":#53A051,"No plan dates":#708794}</colorPalette></format>
+        <format type="color" field="Overall %"><colorPalette type="minMidMax" minColor="#DC4E41" midColor="#F8BE34" maxColor="#53A051"/><scale type="minMidMax" minType="number" min="0" midType="number" mid="50" maxType="number" max="100"/></format>
+        <format type="color" field="Normalize %"><colorPalette type="minMidMax" minColor="#DC4E41" midColor="#F8BE34" maxColor="#53A051"/><scale type="minMidMax" minType="number" min="0" midType="number" mid="50" maxType="number" max="100"/></format>
+        <format type="color" field="Detection %"><colorPalette type="minMidMax" minColor="#DC4E41" midColor="#F8BE34" maxColor="#53A051"/><scale type="minMidMax" minType="number" min="0" midType="number" mid="50" maxType="number" max="100"/></format>
+        <format type="color" field="SOC %"><colorPalette type="minMidMax" minColor="#DC4E41" midColor="#F8BE34" maxColor="#53A051"/><scale type="minMidMax" minType="number" min="0" midType="number" mid="50" maxType="number" max="100"/></format>
+        <format type="color" field="Required gaps"><colorPalette type="list">[#53A051,#DC4E41]</colorPalette><scale type="threshold">1</scale></format>
+      </table>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Average % complete by wave (measured)</title>
+      <chart>
+        <search base="filtered"><query>| where wave!="-" | eval wave="Wave ".wave | stats avg(m_ingest) as "Log ingest", avg(m_normalize) as "Normalize", avg(m_detection) as "Detection", avg(m_soc) as "SOC" by wave | sort wave</query></search>
+        <option name="charting.chart">column</option>
+        <option name="charting.axisY.maximumNumber">100</option>
+        <option name="charting.axisTitleX.visibility">collapsed</option>
+        <option name="charting.axisTitleY.text">% complete</option>
+        <option name="height">280</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Progress over time (daily snapshot, DC-103)</title>
+      <chart>
+        <search>
+          <query><![CDATA[index=summary_datacatalog source="dc_auditor_rollup"
+| fillnull value="-" wave lob
+| search wave="$wave$" lob="$lob$" uhgid="$ae$"
+| eval day=relative_time(_time,"@d")
+| eventstats max(snapshot) as last_snapshot by day
+| where snapshot=last_snapshot
+| eval _time=day
+| timechart span=1d avg(m_ingest) as "Log ingest", avg(m_normalize) as "Normalize", avg(m_detection) as "Detection", avg(m_soc) as "SOC", avg(m_overall) as "Overall"]]></query>
+          <earliest>-90d@d</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.axisY.maximumNumber">100</option>
+        <option name="charting.axisTitleX.visibility">collapsed</option>
+        <option name="height">280</option>
+      </chart>
+    </panel>
+  </row>
+
+  <!-- ============ PLAN ============ -->
+  <row>
+    <panel>
+      <title>Plan tracking - phases past their planned end date that are not complete</title>
+      <table>
+        <search base="filtered"><query><![CDATA[| where plan_status!="No plan dates"
+| eval sort_key=if(plan_status="Behind plan",0,1)
+| sort sort_key wave ae_name
+| table ae_name uhgid wave plan_status overdue_phases next_milestone plan_signoff_end days_to_signoff plan_cloud_migration_end plan_overall_complete
+| rename ae_name as "AE", uhgid as "UHGID", wave as "Wave", plan_status as "Plan", overdue_phases as "Overdue phases (planned end)", next_milestone as "Next milestone", plan_signoff_end as "On-prem sign-off planned", days_to_signoff as "Days to sign-off", plan_cloud_migration_end as "Cloud migration end", plan_overall_complete as "Overall complete planned"]]></query></search>
+        <option name="count">25</option>
+        <option name="wrap">true</option>
+        <format type="color" field="Plan"><colorPalette type="map">{"Behind plan":#DC4E41,"On plan":#53A051}</colorPalette></format>
+      </table>
+    </panel>
+  </row>
+
+  <!-- ============ RECONCILIATION ============ -->
+  <row>
+    <panel>
+      <title>Workbook vs Splunk - where the auditor's tracker and the measured figures disagree</title>
+      <table>
+        <search base="filtered"><query><![CDATA[| where tracked_by="workbook + catalog"
+| foreach normalize detection soc [ eval d_<<FIELD>>=round(m_<<FIELD>>-tonumber(wb_<<FIELD>>_pct),1) ]
+| eval d_overall=round(m_overall-tonumber(wb_overall_pct),1)
+| eval largest_gap=max(abs(d_normalize),abs(d_detection),abs(d_soc)), check=case(isnull(largest_gap),"no comparison", largest_gap>10,"DIFFERS BY MORE THAN 10 PTS", 1=1,"within 10 pts")
+| sort - largest_gap
+| table ae_name uhgid wave wb_normalize_pct m_normalize d_normalize wb_detection_pct m_detection d_detection wb_soc_pct m_soc d_soc wb_overall_pct m_overall check workbook_as_of
+| rename ae_name as "AE", uhgid as "UHGID", wave as "Wave", wb_normalize_pct as "Normalize (workbook)", m_normalize as "Normalize (Splunk)", d_normalize as "Normalize delta", wb_detection_pct as "Detection (workbook)", m_detection as "Detection (Splunk)", d_detection as "Detection delta", wb_soc_pct as "SOC (workbook)", m_soc as "SOC (Splunk)", d_soc as "SOC delta", wb_overall_pct as "Overall (workbook)", m_overall as "Overall (Splunk)", check as "Check", workbook_as_of as "Workbook as of"]]></query></search>
+        <option name="count">25</option>
+        <option name="wrap">true</option>
+        <format type="color" field="Check"><colorPalette type="map">{"DIFFERS BY MORE THAN 10 PTS":#F1813F,"within 10 pts":#53A051}</colorPalette></format>
+      </table>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Tracker consistency findings - records that do not line up across sources</title>
+      <table>
+        <search>
+          <query><![CDATA[| `dc_auditor_rollup`
+| fillnull value="-" wave lob
+| search wave="$wave$" lob="$lob$" uhgid="$ae$"
+| eval finding=mvappend(
+    if(wave_check!="", "Wave differs between workbook sheets: ".wave_check, null()),
+    if(tracked_by="workbook only", "In the auditor workbook but no datasets in the catalog", null()),
+    if(tracked_by="catalog only", "In the catalog but not in the auditor workbook", null()),
+    if(tracked_by!="catalog only" AND (isnull(plan_signoff_end) OR plan_signoff_end=""), "No plan dates in the workbook timeline", null()))
+| append [| inputlookup dc_splunk2_allow | eval uhgid=lower(id) | where uhgid!="core" | lookup dc_datasets_lookup uhgid OUTPUT dataset_id | where isnull(dataset_id) | eval ae_name=name, finding="On the Splunk 2.0 allow list but no datasets in the catalog"]
+| mvexpand finding
+| where isnotnull(finding)
+| table ae_name uhgid wave finding
+| sort finding ae_name
+| rename ae_name as "AE", uhgid as "UHGID", wave as "Wave", finding as "Finding"]]></query>
+          <earliest>-3d</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="count">25</option>
+        <option name="wrap">true</option>
+      </table>
+    </panel>
+  </row>
+
+  <!-- ============ TEAM SCORECARD ============ -->
+  <row>
+    <panel>
+      <title>What each team is tracking - one scorecard (all AEs)</title>
+      <table>
+        <search>
+          <query><![CDATA[| `dc_contracts_enriched`
+| stats count as total, sum(eval(if(siem_status="SIEM complete",1,0))) as siem, sum(eval(if(cde_status="CDE approved",1,0))) as cde, avg(days_waiting_on_cde) as wait
+| eval rows=mvappend("1|Contracts in the contract master|".total, "2|SIEM validation complete|".siem, "3|CDE approved|".cde, "4|Pending CDE|".(total-cde), "5|Average days waiting on CDE|".round(coalesce(wait,0),0)), team="1. SIEM validation (contracts)", source="dc_contract_master"
+| append [search index=summary_datacatalog source="dc_cim_progress" earliest=-3d | eventstats max(snapshot) as ls | where snapshot=ls | stats sum(count) as total, sum(eval(if(status_bucket="Fully onboarded",count,0))) as done, sum(eval(if(status_bucket="CIM normalization gap",count,0))) as cimgap, sum(eval(if(stage="Needs contract",count,0))) as needs | eval rows=mvappend("1|Sourcetypes tracked (tenant x sourcetype)|".total, "2|Fully onboarded|".done, "3|CIM normalization gap|".cimgap, "4|Needs a contract|".needs), team="2. Normalization (CIM Command Center)", source="DC-102 latest snapshot"]
+| append [| `dc_cirt_detection_status` | stats count as total, sum(eval(if(live_order>=3,1,0))) as enabled, sum(eval(if(live_order>=6,1,0))) as mapped, sum(eval(if(live_order=7,1,0))) as healthy | eval rows=mvappend("1|CIRT approved detections|".total, "2|Enabled in Splunk|".enabled, "3|Mapped to ATT&CK|".mapped, "4|Healthy now|".healthy), team="3. CIRT detections", source="dc_cirt_approved_detections + DC-43/63"]
+| append [| inputlookup dc_attack_coverage_lookup | stats count as total, sum(eval(if(coverage_state="covered",1,0))) as cov, sum(eval(if(coverage_state="NO HEALTHY COVERAGE",1,0))) as none, sum(eval(if(coverage_state="SINGLE POINT OF FAILURE",1,0))) as spof | eval rows=mvappend("5|ATT&CK techniques with a mapped detection|".total, "6|Techniques covered|".cov, "7|Techniques single point of failure|".spof, "8|Techniques with no healthy coverage|".none), team="3. CIRT detections", source="DC-62"]
+| append [| inputlookup dc_datasets_lookup | lookup dc_observed_lookup dataset_id OUTPUT last_seen | stats count as total, sum(eval(if(isnotnull(technical_owner) AND technical_owner!="",1,0))) as owner, sum(eval(if(isnotnull(declared_tier) AND declared_tier!="" AND declared_tier!="Tier 5",1,0))) as tier, sum(eval(if(isnotnull(last_seen) AND now()-last_seen<86400,1,0))) as flowing | eval rows=mvappend("1|Datasets cataloged|".total, "2|With a technical owner|".owner, "3|With a CDE tier (1-4)|".tier, "4|Flowing in last 24h|".flowing), team="4. Data catalog", source="dc_datasets + dc_observed"]
+| append [| inputlookup dc_requirement_coverage_lookup | where required="Yes" | stats count as total, sum(eval(if(status="GAP - REQUIRED",1,0))) as gaps, sum(eval(if(status="COVERED",1,0))) as covered | eval rows=mvappend("1|Required log-source requirements (tenant x requirement)|".total, "2|Covered|".covered, "3|Required but missing|".gaps), team="5. Federated requirements (discovery)", source="DC-60"]
+| append [| inputlookup dc_intake_requests_lookup | stats count as total, sum(eval(if(status IN ("Complete","Rejected"),0,1))) as open, sum(eval(if(status="Complete",1,0))) as done | eval rows=mvappend("1|Intake requests|".coalesce(total,0), "2|Open|".coalesce(open,0), "3|Complete|".coalesce(done,0)), team="6. Telemetry intake (CREU / AE)", source="dc_intake_requests"]
+| mvexpand rows
+| eval parts=split(rows,"|"), n=tonumber(mvindex(parts,0)), metric=mvindex(parts,1), value=mvindex(parts,2)
+| sort team n
+| table team metric value source
+| rename team as "Team", metric as "Metric", value as "Value", source as "Source"]]></query>
+          <earliest>-3d</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="count">40</option>
+        <option name="wrap">true</option>
+      </table>
+    </panel>
+  </row>
+
+  <!-- ============ PROVENANCE ============ -->
+  <row>
+    <panel>
+      <title>Where each number comes from and when it was last refreshed</title>
+      <table>
+        <search>
+          <query><![CDATA[| inputlookup dc_ae_program | stats max(workbook_as_of) as asof | eval src="Auditor workbook (dc_ae_program)", refreshed=asof
+| append [| inputlookup dc_detection_health_lookup | stats max(checked) as c | eval src="Detection health (DC-41/43)", refreshed=strftime(c,"%Y-%m-%d %H:%M")]
+| append [| inputlookup dc_attack_coverage_lookup | stats max(checked) as c | eval src="ATT&CK coverage (DC-62)", refreshed=strftime(c,"%Y-%m-%d %H:%M")]
+| append [| inputlookup dc_requirement_coverage_lookup | stats max(checked) as c | eval src="Federated requirements (DC-60)", refreshed=strftime(c,"%Y-%m-%d %H:%M")]
+| append [search index=summary_datacatalog source="dc_cim_progress" earliest=-7d | stats max(snapshot) as c | eval src="CIM Command Center snapshot (DC-102)", refreshed=strftime(c,"%Y-%m-%d %H:%M")]
+| append [| inputlookup dc_observed_lookup | stats max(last_seen) as c | eval src="Observed datasets (DC-01/07)", refreshed=strftime(c,"%Y-%m-%d %H:%M")]
+| append [search index=_internal sourcetype="dc:github_file_pull" earliest=-7d | stats latest(_time) as c, latest(status) as st by input_name | eval src="GitHub pull: ".replace(input_name,"dc_github_file_pull://",""), refreshed=strftime(c,"%Y-%m-%d %H:%M")." (".st.")"]
+| where isnotnull(refreshed)
+| table src refreshed
+| rename src as "Source", refreshed as "Last refreshed"]]></query>
+          <earliest>-7d</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="count">15</option>
+      </table>
+    </panel>
+    <panel>
+      <title>How these numbers are built</title>
+      <html>
+        <div style="font-size:13px;line-height:1.5">
+          <p>Every <b>Measured</b> percentage uses the catalog dataset (tenant x sourcetype) as the unit, the same grain as the workbook's source-type rows.</p>
+          <ul>
+            <li><b>Discovery %</b> - required federated log-source requirements for the AE that have data cataloged or flowing (DC-60). Where DC-60 has no rows for the AE, Overall uses the workbook's Discovery figure instead.</li>
+            <li><b>Ingest 24h %</b> - cataloged datasets with events in the last 24 hours.</li>
+            <li><b>Splunk 2.0 scope %</b> - datasets covered by CIRT's Splunk 2.0 allow list (pulled from GitHub).</li>
+            <li><b>Normalize / Detection / SOC %</b> - catalog gates 1, 2 and 3. As in the workbook, Detection and SOC count Complete, No Detection Needed and Covered as done.</li>
+            <li><b>SIEM contract % / CDE approved %</b> - datasets whose sourcetype and index have a completed SIEM contract / CDE approval in the contract master.</li>
+            <li><b>CIM fully onboarded %</b> - the AE's sourcetypes in the "Fully onboarded" status on the latest CIM Command Center snapshot.</li>
+            <li><b>Overall %</b> - the average of Discovery, Ingest, Normalize, Detection and SOC. The workbook's Overall also averages Monitoring Live, which Splunk cannot measure, so expect the two to differ.</li>
+            <li><b>Behind plan</b> - a phase's planned end date (workbook timeline, on-prem path) has passed and the phase is below 100%.</li>
+          </ul>
+          <p>Workbook figures are a point-in-time copy (see "Workbook as of"). To refresh them, regenerate <code>lookups/dc_ae_program_seed.csv</code> from the workbook, or turn on the <code>auditor_program</code> GitHub pull.</p>
+        </div>
+      </html>
+    </panel>
+  </row>
+</form>

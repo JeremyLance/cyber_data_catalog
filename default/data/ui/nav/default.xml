@@ -17,6 +17,11 @@
     <view name="dc_detection_health"/>
     <view name="dc_mitre_matrix"/>
   </collection>
+  <collection label="Intake and Audit">
+    <view name="dc_intake_navigator"/>
+    <view name="dc_intake_tracker"/>
+    <view name="dc_auditor_rollup"/>
+  </collection>
   <collection label="Platform">
     <view name="dc_infrastructure"/>
     <view name="dc_infra_promote"/>

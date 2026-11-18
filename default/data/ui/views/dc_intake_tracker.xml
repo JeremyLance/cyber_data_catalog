@@ -1,0 +1,237 @@
+<form script="dc_table_export.js" theme="dark" version="1.1">
+  <label>Telemetry Intake Tracker</label>
+  <description>Every request saved from the Telemetry Navigator, where it is in the NEHA intake flow, and whether the technologies it asked for are actually arriving in Splunk for that AE. Use the form to move a request to its next status, or to import a request someone sent as Navigator JSON.</description>
+
+  <init>
+    <set token="show_status">true</set>
+  </init>
+
+  <search id="requests">
+    <query><![CDATA[| inputlookup dc_intake_requests_lookup
+| eval status_order=case(status="Submitted",1, status="Triage",2, status="Approved",3, status="Deferred",4, status="Rejected",5, status="Requirements validated",6, status="Onboarding",7, status="Pipeline validated",8, status="Normalized",9, status="Detections validated",10, status="Monitoring live",11, status="Complete",12, 1=1,0)
+| eval is_open=if(status IN ("Complete","Rejected"),0,1), target_epoch=strptime(target_date,"%Y-%m-%d"), past_target=if(is_open=1 AND isnotnull(target_epoch) AND target_epoch<relative_time(now(),"@d"),1,0), age_days=round((now()-submitted_at)/86400,0), days_in_status=round((now()-coalesce(status_updated,submitted_at))/86400,0)
+| eval submitted=strftime(submitted_at,"%Y-%m-%d"), status_since=strftime(coalesce(status_updated,submitted_at),"%Y-%m-%d")]]></query>
+    <earliest>-1m</earliest>
+  </search>
+
+  <fieldset submitButton="true" autoRun="false">
+    <input type="dropdown" token="action">
+      <label>Action</label>
+      <choice value="status">Update a request's status</choice>
+      <choice value="import">Import Navigator JSON</choice>
+      <default>status</default>
+      <change>
+        <condition value="status"><set token="show_status">true</set><unset token="show_import"></unset></condition>
+        <condition value="import"><set token="show_import">true</set><unset token="show_status"></unset></condition>
+      </change>
+    </input>
+    <input type="dropdown" token="req" depends="$show_status$">
+      <label>Request</label>
+      <fieldForLabel>label</fieldForLabel>
+      <fieldForValue>request_id</fieldForValue>
+      <search base="requests"><query>| eval label=request_id." - ".coalesce(system_name,"(unnamed)")." - ".coalesce(ae_name,uhgid,"")." [".status."]" | sort - submitted_at | fields label request_id</query></search>
+    </input>
+    <input type="dropdown" token="new_status" depends="$show_status$">
+      <label>New status</label>
+      <choice value="Submitted">Submitted</choice>
+      <choice value="Triage">Triage</choice>
+      <choice value="Approved">Approved</choice>
+      <choice value="Deferred">Deferred</choice>
+      <choice value="Rejected">Rejected</choice>
+      <choice value="Requirements validated">Requirements validated</choice>
+      <choice value="Onboarding">Onboarding</choice>
+      <choice value="Pipeline validated">Pipeline validated</choice>
+      <choice value="Normalized">Normalized</choice>
+      <choice value="Detections validated">Detections validated</choice>
+      <choice value="Monitoring live">Monitoring live</choice>
+      <choice value="Complete">Complete</choice>
+    </input>
+    <input type="text" token="note" depends="$show_status$">
+      <label>Note (optional)</label>
+      <default></default>
+    </input>
+    <input type="text" token="json" depends="$show_import$">
+      <label>Paste Navigator JSON</label>
+    </input>
+    <input type="dropdown" token="write_import" depends="$show_import$">
+      <label>Import mode</label>
+      <choice value="preview">Preview only</choice>
+      <choice value="write">Write to Splunk</choice>
+      <default>preview</default>
+      <change>
+        <condition value="write"><set token="do_import">true</set></condition>
+        <condition><unset token="do_import"></unset></condition>
+      </change>
+    </input>
+    <input type="text" token="by">
+      <label>Performed by (your name/ID)</label>
+    </input>
+  </fieldset>
+
+  <row>
+    <panel>
+      <single>
+        <title>Requests</title>
+        <search base="requests"><query>| stats count</query></search>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Open</title>
+        <search base="requests"><query>| stats sum(is_open) as open</query></search>
+        <option name="underLabel">not Complete or Rejected</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Past target date</title>
+        <search base="requests"><query>| stats sum(past_target) as late</query></search>
+        <option name="underLabel">open, target onboarding date passed</option>
+        <option name="colorMode">block</option>
+        <option name="useColors">1</option>
+        <option name="rangeColors">["0x53a051","0xdc4e41"]</option>
+        <option name="rangeValues">[0]</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Complete</title>
+        <search base="requests"><query>| where status="Complete" | stats count</query></search>
+      </single>
+    </panel>
+  </row>
+
+  <row depends="$show_status$,$req$,$new_status$,$by$">
+    <panel>
+      <title>Status updated</title>
+      <table>
+        <search>
+          <query><![CDATA[| inputlookup dc_intake_requests_lookup where request_id=$req|s$
+| eval status=$new_status|s$, status_updated=now(), status_by=$by|s$, status_note=$note|s$, _key=request_id
+| table _key request_id submitted_at submitted_by status status_updated status_by status_note system_name application_id uhgid ae_name requesting_team data_owner business_unit environment volume_gb_day target_date data_sensitivity regulatory_drivers overlays technologies technology_scopes index_families conditional_triggers standard_version source payload_json
+| outputlookup append=t dc_intake_requests_lookup
+| eval status_updated=strftime(status_updated,"%Y-%m-%d %H:%M")
+| table request_id system_name ae_name status status_updated status_by status_note]]></query>
+          <earliest>-1m</earliest>
+        </search>
+      </table>
+    </panel>
+  </row>
+
+  <row depends="$show_import$,$json$">
+    <panel>
+      <title>Import - what will be saved ($write_import$)</title>
+      <table>
+        <search>
+          <query><![CDATA[| makeresults
+| eval payload=$json|s$
+| spath input=payload path=requestId output=request_id
+| spath input=payload path=system output=system_name
+| spath input=payload path=applicationId output=application_id
+| spath input=payload path=uhgid output=uhgid
+| spath input=payload path=aeName output=ae_name
+| spath input=payload path=requestingTeam output=requesting_team
+| spath input=payload path=dataOwner output=data_owner
+| spath input=payload path=businessUnitOrAE output=business_unit
+| spath input=payload path=environment output=environment
+| spath input=payload path=volumeGBPerDay output=volume_gb_day
+| spath input=payload path=targetOnboardingDate output=target_date
+| spath input=payload path=dataSensitivity output=data_sensitivity
+| spath input=payload path=regulatoryDrivers{} output=regulatory_drivers
+| spath input=payload path=overlays{} output=overlays
+| spath input=payload path=standard output=standard_version
+| spath input=payload path=technologies{} output=tech
+| eval uhgid=lower(trim(uhgid)), technologies=mvjoin(mvmap(tech, spath(tech,"family")),"|"), technology_scopes=mvjoin(mvmap(tech, spath(tech,"family")."=".spath(tech,"scope")),"|"), index_families=mvjoin(mvmap(tech, spath(tech,"family")."=".coalesce(mvjoin(spath(tech,"indexFamilies{}"),","),"")),"|"), conditional_triggers=mvjoin(mvmap(tech, if(isnotnull(spath(tech,"conditionalTriggers{}")), spath(tech,"family")."=".mvjoin(spath(tech,"conditionalTriggers{}"),","), null())),"|"), regulatory_drivers=mvjoin(regulatory_drivers,"|"), overlays=mvjoin(overlays,"|")
+| lookup dc_datasets_lookup uhgid OUTPUT ae_name as catalog_ae_name
+| eval ae_name=coalesce(if(ae_name="",null(),ae_name), mvindex(catalog_ae_name,0), "")
+| lookup dc_intake_requests_lookup request_id OUTPUT status as old_status, submitted_at as old_submitted_at, submitted_by as old_submitted_by, status_updated as old_status_updated, status_by as old_status_by, status_note as old_status_note
+| eval status=coalesce(old_status,"Submitted"), submitted_at=coalesce(old_submitted_at,now()), submitted_by=coalesce(old_submitted_by,$by|s$), status_updated=coalesce(old_status_updated,now()), status_by=coalesce(old_status_by,$by|s$), status_note=coalesce(old_status_note,""), source="json_import", payload_json=payload, _key=request_id
+| eval check=case(isnull(request_id) OR request_id="","NOT A NAVIGATOR SUMMARY - nothing will be saved", isnull(technologies) OR technologies="","No technologies selected", isnotnull(old_status),"Updates existing request (status kept: ".old_status.")", 1=1,"New request")
+| table check request_id system_name uhgid ae_name requesting_team environment target_date technologies technology_scopes overlays index_families]]></query>
+          <earliest>-1m</earliest>
+        </search>
+        <option name="wrap">true</option>
+      </table>
+    </panel>
+  </row>
+
+  <row depends="$show_import$,$json$,$do_import$">
+    <panel>
+      <title>Import - saved to Splunk</title>
+      <table>
+        <search>
+          <query><![CDATA[| makeresults
+| eval payload=$json|s$
+| spath input=payload path=requestId output=request_id
+| where isnotnull(request_id) AND request_id!=""
+| spath input=payload path=system output=system_name
+| spath input=payload path=applicationId output=application_id
+| spath input=payload path=uhgid output=uhgid
+| spath input=payload path=aeName output=ae_name
+| spath input=payload path=requestingTeam output=requesting_team
+| spath input=payload path=dataOwner output=data_owner
+| spath input=payload path=businessUnitOrAE output=business_unit
+| spath input=payload path=environment output=environment
+| spath input=payload path=volumeGBPerDay output=volume_gb_day
+| spath input=payload path=targetOnboardingDate output=target_date
+| spath input=payload path=dataSensitivity output=data_sensitivity
+| spath input=payload path=regulatoryDrivers{} output=regulatory_drivers
+| spath input=payload path=overlays{} output=overlays
+| spath input=payload path=standard output=standard_version
+| spath input=payload path=technologies{} output=tech
+| eval uhgid=lower(trim(uhgid)), technologies=mvjoin(mvmap(tech, spath(tech,"family")),"|"), technology_scopes=mvjoin(mvmap(tech, spath(tech,"family")."=".spath(tech,"scope")),"|"), index_families=mvjoin(mvmap(tech, spath(tech,"family")."=".coalesce(mvjoin(spath(tech,"indexFamilies{}"),","),"")),"|"), conditional_triggers=mvjoin(mvmap(tech, if(isnotnull(spath(tech,"conditionalTriggers{}")), spath(tech,"family")."=".mvjoin(spath(tech,"conditionalTriggers{}"),","), null())),"|"), regulatory_drivers=mvjoin(regulatory_drivers,"|"), overlays=mvjoin(overlays,"|")
+| lookup dc_datasets_lookup uhgid OUTPUT ae_name as catalog_ae_name
+| eval ae_name=coalesce(if(ae_name="",null(),ae_name), mvindex(catalog_ae_name,0), "")
+| lookup dc_intake_requests_lookup request_id OUTPUT status as old_status, submitted_at as old_submitted_at, submitted_by as old_submitted_by, status_updated as old_status_updated, status_by as old_status_by, status_note as old_status_note
+| eval status=coalesce(old_status,"Submitted"), submitted_at=coalesce(old_submitted_at,now()), submitted_by=coalesce(old_submitted_by,$by|s$), status_updated=coalesce(old_status_updated,now()), status_by=coalesce(old_status_by,$by|s$), status_note=coalesce(old_status_note,""), source="json_import", payload_json=payload, _key=request_id
+| table _key request_id submitted_at submitted_by status status_updated status_by status_note system_name application_id uhgid ae_name requesting_team data_owner business_unit environment volume_gb_day target_date data_sensitivity regulatory_drivers overlays technologies technology_scopes index_families conditional_triggers standard_version source payload_json
+| outputlookup append=t dc_intake_requests_lookup
+| table request_id system_name ae_name status technologies]]></query>
+          <earliest>-1m</earliest>
+        </search>
+      </table>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Requests</title>
+      <table>
+        <search base="requests"><query>| sort is_open status_order - submitted_at | table request_id submitted system_name ae_name uhgid requesting_team technologies overlays data_sensitivity status status_since days_in_status target_date past_target submitted_by</query></search>
+        <option name="count">25</option>
+        <option name="wrap">true</option>
+        <format type="color" field="status"><colorPalette type="map">{"Complete":#53A051,"Rejected":#708794,"Deferred":#F8BE34,"Submitted":#006D9C,"Triage":#006D9C}</colorPalette></format>
+        <format type="color" field="past_target"><colorPalette type="map">{"1":#DC4E41,"0":#53A051}</colorPalette></format>
+      </table>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Requested vs arriving - is each requested technology flowing for that AE?</title>
+      <table>
+        <search>
+          <query><![CDATA[| inputlookup dc_intake_requests_lookup
+| eval uhgid=lower(uhgid), pairs=split(index_families,"|")
+| mvexpand pairs
+| eval technology=mvindex(split(pairs,"="),0), fams=mvindex(split(pairs,"="),1), index_family=if(isnull(fams) OR fams="","(none)",split(fams,","))
+| mvexpand index_family
+| join type=left uhgid index_family
+    [| inputlookup dc_observed_lookup
+     | `dc_key`
+     | `dc_index_family`
+     | where isnotnull(index_family)
+     | stats max(last_seen) as last_seen, values(sourcetype) as sourcetypes_seen by uhgid index_family]
+| eval check=case(index_family="(none)","No index family in the standard - check by hand", isnull(uhgid) OR uhgid="","No UHGID on the request", isnull(last_seen),"Not arriving yet", now()-last_seen>86400,"Arrived before, silent 24h+", 1=1,"Flowing")
+| eval last_seen=if(isnull(last_seen),"",strftime(last_seen,"%Y-%m-%d %H:%M")), sourcetypes_seen=mvjoin(sourcetypes_seen,", ")
+| table request_id system_name ae_name uhgid status technology index_family check last_seen sourcetypes_seen
+| sort request_id technology]]></query>
+          <earliest>-1m</earliest>
+        </search>
+        <option name="count">40</option>
+        <option name="wrap">true</option>
+        <format type="color" field="check"><colorPalette type="map">{"Flowing":#53A051,"Not arriving yet":#F8BE34,"Arrived before, silent 24h+":#DC4E41,"No UHGID on the request":#F1813F}</colorPalette></format>
+      </table>
+    </panel>
+  </row>
+</form>

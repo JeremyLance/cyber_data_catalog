@@ -1,0 +1,13 @@
+id,name,line_of_business,sourcetype
+core,core,core,all
+uhgid-000024,Change Healthcare,optum_insight,all
+UHGID-000111,Solutran,Optum Financial,all
+uhgid-000017,Banmedica,uhc_e&i_global,pan:threat
+uhgid-000219,OWCA,OptumRx,XmlWinEventLog
+uhgid-000222,Optum Labs UHG R&D,OptumRx,XmlWinEventLog
+uhgid-000015,Atrius Health,Optum Care Delivery,citrix:netscaler:syslog
+uhgid-000053,HealthSmart,UHC Employer & Individual,citrix:netscaler:syslog
+uhgid-000098,Reliant Medical Group,Optum Care Delivery,citrix:netscaler:syslog
+uhgid-000106,Surgical Care Affiliates,Optum Care Delivery,citrix:netscaler:syslog
+uhgid-000234,Urology Specialists of Nevada,Optum Care Delivery,citrix:netscaler:syslog
+uhgid-000481,Encompass Medical Group,Optum Care Delivery,citrix:netscaler:syslog

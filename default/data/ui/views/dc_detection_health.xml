@@ -1,13 +1,148 @@
-<dashboard script="dc_table_export.js" theme="dark" version="1.1">
+<form script="dc_table_export.js" theme="dark" version="1.1">
   <label>Cyber Data Catalog - Detection Health and ATT&amp;CK Exposure</label>
-  <description>Enabled is not the same as working. Confidence = data flowing + CIM normalized + BAS validated + executing without skips.</description>
+  <description>Enabled is not the same as working. Confidence = data flowing + CIM normalized + BAS validated + executing without skips. The CIRT rows show the detections CIRT has approved and is monitoring, pulled from GitHub.</description>
+
+  <!-- Shared base searches -->
+  <search id="cirt_status">
+    <query>| `dc_cirt_detection_status`</query>
+    <earliest>-1m</earliest>
+  </search>
+  <search id="coverage">
+    <query><![CDATA[| inputlookup dc_attack_coverage_lookup
+| eval state_order=case(coverage_state="NO HEALTHY COVERAGE",1, coverage_state="SINGLE POINT OF FAILURE",2, coverage_state="degraded",3, 1=1,4)
+| fillnull value=0 detections_failing_checks detections_cirt_approved detections_cirt_healthy]]></query>
+    <earliest>-1m</earliest>
+  </search>
+
+  <fieldset submitButton="false" autoRun="true">
+    <input type="dropdown" token="state_filter" searchWhenChanged="true">
+      <label>Coverage state</label>
+      <choice value="*">All states</choice>
+      <choice value="NO HEALTHY COVERAGE">NO HEALTHY COVERAGE</choice>
+      <choice value="SINGLE POINT OF FAILURE">SINGLE POINT OF FAILURE</choice>
+      <choice value="degraded">degraded</choice>
+      <choice value="covered">covered</choice>
+      <default>*</default>
+    </input>
+    <input type="dropdown" token="cirt_filter" searchWhenChanged="true">
+      <label>Detections</label>
+      <choice value="*">All mapped detections</choice>
+      <choice value="yes">CIRT-approved only</choice>
+      <default>*</default>
+    </input>
+  </fieldset>
+
+  <!-- ============ CIRT LIVE COVERAGE ============ -->
+  <row>
+    <panel>
+      <title>CIRT approved detections</title>
+      <single>
+        <search base="cirt_status"><query>| stats count</query></search>
+        <option name="underLabel">on the approved list (duplicates by case counted once)</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Enabled in Splunk</title>
+      <single>
+        <search base="cirt_status"><query>| where live_order&gt;=3 | stats count</query></search>
+        <option name="underLabel">found by name and enabled</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Mapped to ATT&amp;CK</title>
+      <single>
+        <search base="cirt_status"><query>| where live_order&gt;=6 | stats count</query></search>
+        <option name="underLabel">correlation search with a technique</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Healthy now</title>
+      <single>
+        <search base="cirt_status"><query>| where live_order=7 | stats count</query></search>
+        <option name="underLabel">trusted or acceptable, data not at risk</option>
+        <option name="colorMode">block</option>
+        <option name="useColors">1</option>
+        <option name="rangeColors">["0xdc4e41","0x53a051"]</option>
+        <option name="rangeValues">[0]</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Techniques with a healthy CIRT detection</title>
+      <single>
+        <search base="coverage"><query>| where detections_cirt_healthy&gt;0 | stats count</query></search>
+        <option name="underLabel">covered by at least one healthy approved detection</option>
+      </single>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>CIRT approved detections - where each one stands</title>
+      <chart>
+        <search base="cirt_status"><query>| stats count by live_order live_status | sort live_order | fields live_status count</query></search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="charting.axisTitleX.visibility">collapsed</option>
+        <option name="charting.axisTitleY.visibility">collapsed</option>
+        <option name="height">260</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>CIRT monitoring scope - Splunk 2.0 allow list</title>
+      <table>
+        <search>
+          <query><![CDATA[| inputlookup dc_datasets_lookup
+| eval uhgid=lower(uhgid)
+| lookup dc_observed_lookup dataset_id OUTPUT last_seen
+| `dc_splunk2_scope`
+| eval flowing=if(isnotnull(last_seen) AND now()-last_seen<86400,1,0)
+| stats count as datasets_cataloged, sum(splunk2_in_scope) as datasets_in_scope, sum(eval(if(splunk2_in_scope=1 AND flowing=1,1,0))) as in_scope_flowing_24h by uhgid
+| append [| inputlookup dc_splunk2_allow | eval uhgid=lower(id) | stats values(sourcetype) as allowed_sourcetypes, first(name) as tenant, first(line_of_business) as line_of_business by uhgid | eval on_allow_list=1]
+| stats max(on_allow_list) as on_allow_list, first(tenant) as tenant, first(line_of_business) as line_of_business, values(allowed_sourcetypes) as allowed_sourcetypes, max(datasets_cataloged) as datasets_cataloged, max(datasets_in_scope) as datasets_in_scope, max(in_scope_flowing_24h) as in_scope_flowing_24h by uhgid
+| where on_allow_list=1
+| fillnull value=0 datasets_cataloged datasets_in_scope in_scope_flowing_24h
+| eval allowed_sourcetypes=mvjoin(allowed_sourcetypes,", ")
+| table tenant uhgid line_of_business allowed_sourcetypes datasets_cataloged datasets_in_scope in_scope_flowing_24h
+| sort tenant]]></query>
+          <earliest>-1m</earliest>
+        </search>
+        <option name="count">15</option>
+      </table>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>CIRT approved detections - live mapping status</title>
+      <table>
+        <search base="cirt_status"><query>| sort live_order alert_name | table live_status alert_name environment app owner ko_tier techniques health_state health_reason runs_30d last_fired</query></search>
+        <option name="count">25</option>
+        <format type="color" field="live_status"><colorPalette type="map">{"Mapped and healthy":#53A051,"Mapped - not healthy":#F8BE34,"Annotated - not mapped yet (DC-63 runs 05:55)":#F8BE34,"Enabled - no ATT&amp;CK annotation":#F1813F,"Scheduled search, not a correlation search":#F1813F,"In Splunk but disabled":#DC4E41,"Not found in Splunk - check the name":#DC4E41}</colorPalette></format>
+        <format type="color" field="health_state"><colorPalette type="map">{"trusted":#53A051,"acceptable":#F8BE34,"degraded":#F1813F,"NOT TRUSTWORTHY":#DC4E41}</colorPalette></format>
+      </table>
+    </panel>
+  </row>
+
+  <!-- ============ EXISTING HEALTH PANELS ============ -->
   <row>
     <panel><title>Detection confidence by tier</title>
       <chart><search><query>| inputlookup dc_detection_health_lookup | lookup dc_ko_lookup ko_id OUTPUT ko_tier enabled ko_type | where enabled="yes" | chart count over ko_tier by health_state</query><earliest>-1m</earliest></search>
         <option name="charting.chart">bar</option><option name="charting.chart.stackMode">stacked</option></chart></panel>
     <panel><title>ATT&amp;CK coverage state</title>
-      <chart><search><query>| inputlookup dc_attack_coverage_lookup | stats count by coverage_state</query><earliest>-1m</earliest></search>
-        <option name="charting.chart">pie</option></chart></panel>
+      <chart><search base="coverage"><query>| stats count by coverage_state</query></search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.fieldColors">{"NO HEALTHY COVERAGE":0xDC4E41,"SINGLE POINT OF FAILURE":0xF1813F,"degraded":0xF8BE34,"covered":0x53A051}</option></chart></panel>
+    <panel><title>Why mapped detections are not healthy</title>
+      <chart><search><query><![CDATA[| inputlookup dc_attack_mapping_lookup
+| fillnull value="no" cirt_approved
+| search cirt_approved="$cirt_filter$"
+| where NOT (health_state IN ("trusted","acceptable") AND data_at_risk="no")
+| eval reason=if(data_at_risk="yes",mvappend("data at risk", split(health_reason,"; ")),split(health_reason,"; "))
+| eval reason=mvfilter(reason!="all checks passed")
+| stats dc(ko_id) as detections by reason | sort - detections]]></query><earliest>-1m</earliest></search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="charting.axisTitleX.visibility">collapsed</option></chart></panel>
   </row>
   <row>
     <panel><title>Silent Tier 0/1 detections - fired nothing in 90 days</title>
@@ -17,31 +152,71 @@
     <panel><title>Skipped executions - leading indicator of missed detections</title>
       <table><search><query>| inputlookup dc_detection_health_lookup | lookup dc_ko_lookup ko_id OUTPUT ko_name ko_tier owner enabled | where enabled="yes" AND skip_rate_pct&gt;0 | table ko_id ko_name ko_tier owner runs_30d skipped_30d skip_rate_pct | sort - skip_rate_pct</query><earliest>-1m</earliest></search><option name="count">20</option></table></panel>
   </row>
+
+  <!-- ============ COVERAGE STATE ============ -->
   <row>
-    <panel><title>ATT&amp;CK techniques at risk from data issues</title>
-      <table><search><query>| inputlookup dc_attack_coverage_lookup | table technique detections_total detections_healthy detections_at_risk coverage_state datasets_supporting | sort coverage_state - detections_at_risk</query><earliest>-1m</earliest></search><option name="count">40</option>
+    <panel>
+      <title>How coverage_state is decided, and how a technique gets to covered</title>
+      <html>
+        <div style="font-size:13px;line-height:1.5">
+          <p><b>1. Map detections to the technique.</b> DC-63 reads the ATT&amp;CK IDs in each enabled correlation search's annotations. Every detection that names the technique (or one of its sub-techniques) counts toward it.</p>
+          <p><b>2. Decide whether each detection is healthy.</b> A detection is <b>healthy</b> only when both are true:</p>
+          <ul>
+            <li><b>Its data is not at risk.</b> Every dataset the detection reads (from the dependency graph, DC-12/13) was seen in the last 24 hours and has CIM capture of at least 95%.</li>
+            <li><b>DC-43 rates it trusted or acceptable.</b> DC-43 checks data flowing, CIM capture of 95% or more, successful runs in 30 days with a skip rate under 5%, and a BAS test in the last 180 days (only where BAS is recorded). Trusted passes every check; acceptable misses one.</li>
+          </ul>
+          <p><b>3. Roll up to the technique</b> (DC-62, daily at 06:00):</p>
+          <table style="border-collapse:collapse;margin:4px 0 8px">
+            <tr><td style="padding:2px 10px;background:#DC4E41;color:#fff"><b>NO HEALTHY COVERAGE</b></td><td style="padding:2px 10px">No mapped detection is healthy.</td></tr>
+            <tr><td style="padding:2px 10px;background:#F1813F;color:#fff"><b>SINGLE POINT OF FAILURE</b></td><td style="padding:2px 10px">Exactly one healthy detection, and at least one other has data at risk.</td></tr>
+            <tr><td style="padding:2px 10px;background:#F8BE34;color:#000"><b>degraded</b></td><td style="padding:2px 10px">Two or more healthy detections, but some have data at risk.</td></tr>
+            <tr><td style="padding:2px 10px;background:#53A051;color:#fff"><b>covered</b></td><td style="padding:2px 10px">At least one healthy detection and none with data at risk.</td></tr>
+          </table>
+          <p><b>Getting from NO HEALTHY COVERAGE to covered:</b> make any one mapped detection healthy. The <b>blockers</b> column below names each unhealthy detection and the check it failed. Fix that check, and the technique changes state on the next daily run (DC-43 at 05:05, DC-63 at 05:55, DC-62 at 06:00).</p>
+          <p><b>Read this first:</b> a technique can be NO HEALTHY COVERAGE with <b>zero detections at risk</b>. That means the data is fine but the detections failed other checks. Those are counted in <b>failing_checks</b>. The most common cause is "no data source linked": the dependency graph could not tell which dataset the detection reads (for example, it uses a macro or data model), so the data and CIM checks cannot pass. The fix is in the dependency graph, not the feed.</p>
+        </div>
+      </html>
+    </panel>
+  </row>
+
+  <row>
+    <panel><title>ATT&amp;CK techniques by coverage state - what is blocking each one</title>
+      <table><search base="coverage"><query><![CDATA[| search coverage_state="$state_filter$"
+| where "$cirt_filter$"="*" OR detections_cirt_approved>0
+| sort state_order - detections_at_risk technique
+| rename detections_total as total, detections_healthy as healthy, detections_at_risk as data_at_risk, detections_failing_checks as failing_checks, detections_cirt_approved as cirt_approved, detections_cirt_healthy as cirt_healthy
+| table technique technique_name tactic coverage_state total healthy data_at_risk failing_checks cirt_approved cirt_healthy blockers next_step datasets_supporting]]></query></search><option name="count">40</option><option name="wrap">true</option>
         <format type="color" field="coverage_state"><colorPalette type="map">{"NO HEALTHY COVERAGE":#DC4E41,"SINGLE POINT OF FAILURE":#F1813F,"degraded":#F8BE34,"covered":#53A051}</colorPalette></format>
       </table></panel>
   </row>
+
   <row>
-    <panel><title>ATT&amp;CK technique detail - detections mapped to a specific technique</title>
+    <panel><title>ATT&amp;CK technique detail - live detection mapping for a technique</title>
       <input type="dropdown" token="mitre_technique" searchWhenChanged="true">
         <label>Technique</label>
         <choice value="*">All techniques</choice>
+        <default>*</default>
         <fieldForLabel>label</fieldForLabel>
         <fieldForValue>technique</fieldForValue>
         <search><query>| inputlookup dc_attack_mapping_lookup | stats count by technique, technique_name | eval label=if(technique_name!="",technique." - ".technique_name,technique) | sort technique</query></search>
       </input>
-      <table><search><query>| inputlookup dc_attack_mapping_lookup | search technique="$mitre_technique$" | eval technique_display=if(technique_name!="",technique." - ".technique_name,technique) | table technique_display tactic sub_technique ko_id ko_name ko_type ko_tier app owner enabled health_state data_at_risk datasets_supporting source | sort ko_tier - health_state</query><earliest>-1m</earliest></search><option name="count">50</option>
+      <table><search><query><![CDATA[| inputlookup dc_attack_mapping_lookup
+| fillnull value="no" cirt_approved
+| search technique="$mitre_technique$" cirt_approved="$cirt_filter$"
+| eval technique_display=if(technique_name!="",technique." - ".technique_name,technique), healthy=if(data_at_risk="no" AND health_state IN ("trusted","acceptable"),"yes","no")
+| table technique_display tactic sub_technique ko_name cirt_approved cirt_environment healthy health_state health_reason data_at_risk datasets_supporting ko_tier app owner source
+| sort technique_display - cirt_approved healthy ko_tier]]></query><earliest>-1m</earliest></search><option name="count">50</option><option name="wrap">true</option>
         <format type="color" field="health_state"><colorPalette type="map">{"trusted":#53A051,"acceptable":#F8BE34,"degraded":#F1813F,"NOT TRUSTWORTHY":#DC4E41}</colorPalette></format>
+        <format type="color" field="healthy"><colorPalette type="map">{"yes":#53A051,"no":#DC4E41}</colorPalette></format>
         <format type="color" field="data_at_risk"><colorPalette type="map">{"yes":#DC4E41,"no":#53A051}</colorPalette></format>
+        <format type="color" field="cirt_approved"><colorPalette type="map">{"yes":#006D9C}</colorPalette></format>
       </table></panel>
   </row>
   <row>
     <panel>
       <html>
-        <p style="margin:8px 0;">For the full ATT&amp;CK technique-by-tactic coverage matrix (production and risk-accepted detections vs. the complete ctm_mitre_lookup technique set), see the <a href="/app/cyber_data_catalog/dc_mitre_matrix">MITRE ATT&amp;CK Coverage Matrix</a> dashboard.</p>
+        <p style="margin:8px 0;">For the full ATT&amp;CK technique-by-tactic coverage matrix (production and risk-accepted detections vs. the complete ctm_mitre_lookup technique set), see the <a href="/app/cyber_data_catalog/dc_mitre_matrix">MITRE ATT&amp;CK Coverage Matrix</a> dashboard. CIRT's approved list and the Splunk 2.0 allow list refresh from GitHub every 30 minutes once the cirt_* pulls are enabled (Apps &gt; Data inputs &gt; GitHub File Pull).</p>
       </html>
     </panel>
   </row>
-</dashboard>
+</form>

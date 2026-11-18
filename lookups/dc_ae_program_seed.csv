@@ -1,0 +1,23 @@
+ae_name,uhgid,wave,timeline_wave,lob,wb_discovery_pct,wb_ingest_saas2_pct,wb_normalize_pct,wb_detection_pct,wb_monitoring_pct,wb_soc_pct,wb_overall_pct,wb_onprem_overall_pct,wb_cloud_overall_pct,plan_discovery_end,plan_ingest_end,plan_normalize_end,plan_detect_soc_end,plan_monitoring_end,plan_signoff_end,plan_cloud_migration_end,plan_overall_complete,workbook_as_of,workbook_source
+Change Healthcare,uhgid-000024,1,1,Optum Insight,100,100,24.5,18.2,0,0,35.3,32.1,38.6,2026-09-04,2026-09-25,2026-10-30,2026-12-04,2026-12-25,2027-01-22,2026-10-16,2027-01-22,2026-11-13,AE_Log_Source_Matrix_v1.xlsx
+Solutran,uhgid-000111,1,1,Optum Financial,100,100,35.4,19.6,0,0,35.6,40.0,31.2,2026-09-04,2026-09-25,2026-10-30,2026-12-04,2026-12-25,2027-01-22,,2027-01-22,2026-11-13,AE_Log_Source_Matrix_v1.xlsx
+WellMed,uhgid-000297,1,1,Optum Health,100,100,24.5,7.4,0,0,32.5,34.9,30.0,2026-09-04,2026-09-25,2026-10-30,2026-12-04,2026-12-25,2027-01-22,,2027-01-22,2026-11-13,AE_Log_Source_Matrix_v1.xlsx
+Kelsey Seybold,uhgid-000058,2,4,Optum Health,98.0,74.8,27.5,23.5,0,0,37.3,37.6,37.0,2026-11-16,2026-12-07,2027-01-11,2027-02-15,2027-03-08,2027-04-05,,2027-04-05,2026-11-13,AE_Log_Source_Matrix_v1.xlsx
+Monarch,uhgid-000069,2,4,Optum Health,98.7,42.1,0,0,0,0,23.5,30.3,16.7,2026-11-16,2026-12-07,2027-01-11,2027-02-15,2027-03-08,2027-04-05,2026-11-16,2027-04-05,2026-11-13,AE_Log_Source_Matrix_v1.xlsx
+NAMM CA,uhgid-000073,2,4,Optum Health,88.9,41.7,0,0,0,0,21.8,29.6,13.9,2026-11-16,2026-12-07,2027-01-11,2027-02-15,2027-03-08,2027-04-05,,2027-04-05,2026-11-13,AE_Log_Source_Matrix_v1.xlsx
+VPay,uhgid-000123,2,2,Optum Financial,100,46.4,4.8,0,0,0,25.2,33.7,16.7,2026-09-14,2026-10-05,2026-11-09,2026-12-14,2027-01-04,2027-02-01,,2027-02-01,2026-11-13,AE_Log_Source_Matrix_v1.xlsx
+Episource,uhgid-000034,3,3,Optum Insight,100,20.0,10.0,10.0,0,0,23.3,30.0,16.7,2026-10-19,2026-11-09,2026-12-14,2027-01-18,2027-02-08,2027-03-08,,2027-03-08,2026-11-13,AE_Log_Source_Matrix_v1.xlsx
+OptumCare NV,uhgid-000234,3,4,Optum Health,59.7,40.3,0,0,0,0,16.7,16.7,16.7,2026-12-14,2027-01-04,2027-02-08,2027-03-15,2027-04-05,2027-05-03,,2027-05-03,2026-11-13,AE_Log_Source_Matrix_v1.xlsx
+SCA (Surgical Care Affiliates),uhgid-000106,3,3,Optum Health,100,78.5,14.5,4.2,0,0,32.9,35.6,30.1,2026-10-19,2026-11-09,2026-12-14,2027-01-18,2027-02-08,2027-03-08,2026-11-16,2027-03-08,2026-11-13,AE_Log_Source_Matrix_v1.xlsx
+Surest,uhgid-000020,3,2,UHC,100,9.5,4.8,0,0,0,9.5,0,19.0,2026-09-14,2026-10-05,2026-11-09,2026-12-14,2027-01-04,2027-02-01,,2027-02-01,2026-11-13,AE_Log_Source_Matrix_v1.xlsx
+UHC NV Market (Sierra),uhgid-000456,3,2,UHC,100,37.9,0,0,0,0,23.0,28.2,17.8,2026-09-14,2026-10-05,2026-11-09,2026-12-14,2027-01-04,2027-02-01,,2027-02-01,2026-11-13,AE_Log_Source_Matrix_v1.xlsx
+CPS Solutions,uhgid-000301,4,3,OptumRX,100,47.3,4.2,0,0,0,25.3,31.1,19.4,2026-10-19,2026-11-09,2026-12-14,2027-01-18,2027-02-08,2027-03-08,2026-10-19,2027-03-08,2026-11-13,AE_Log_Source_Matrix_v1.xlsx
+Equian,uhgid-000035,4,3,Optum Health,100,53.4,11.5,0,0,0,27.5,31.2,23.8,2026-10-19,2026-11-09,2026-12-14,2027-01-18,2027-02-08,2027-03-08,,2027-03-08,2026-11-13,AE_Log_Source_Matrix_v1.xlsx
+LDMG California,uhgid-000061,4,4,Optum Health,100,41.4,1.4,0,0,0,23.8,31.0,16.7,2026-12-14,2027-01-04,2027-02-08,2027-03-15,2027-04-05,2027-05-03,,2027-05-03,2026-11-13,AE_Log_Source_Matrix_v1.xlsx
+Atrius,uhgid-000015,5,5,Optum Health,100,43.8,7.8,1.6,0,0,25.5,34.4,16.7,,,,,,,,,2026-11-13,AE_Log_Source_Matrix_v1.xlsx
+ProHealth CT,uhgid-000090,5,5,Optum Health,100,42.4,0,0,0,0,23.7,30.8,16.7,,,,,,,,,2026-11-13,AE_Log_Source_Matrix_v1.xlsx
+ProHealth NY (PHNY) - Riverside,uhgid-000091,5,5,Optum Health,100,41.9,0,0,0,0,23.7,30.6,16.7,2026-12-14,2027-01-04,2027-02-08,2027-03-15,2027-04-05,2027-05-03,,2027-05-03,2026-11-13,AE_Log_Source_Matrix_v1.xlsx
+Reliant Medical Group,uhgid-000098,5,5,Optum Health,100,45.6,7.4,2.9,0,0,26.0,35.3,16.7,,,,,,,,,2026-11-13,AE_Log_Source_Matrix_v1.xlsx
+LHI,uhgid-000233,,3,Optum Health,,,,,,,,,,2026-10-19,2026-11-09,2026-12-14,2027-01-18,2027-02-08,2027-03-08,,2027-03-08,2026-11-13,AE_Log_Source_Matrix_v1.xlsx
+Refresh Mental Health,uhgid-000097,5,5,Optum Health,,,,,,,,,,2026-12-14,2027-01-04,2027-02-08,2027-03-15,2027-04-05,2027-05-03,,2027-05-03,2026-11-13,AE_Log_Source_Matrix_v1.xlsx
+UHOne,uhgid-000460,2,2,UHC,,,,,,,,,,2026-09-14,2026-10-05,2026-11-09,2026-12-14,2027-01-04,2027-02-01,2026-11-02,2027-02-01,2026-11-13,AE_Log_Source_Matrix_v1.xlsx

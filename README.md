@@ -1,4 +1,4 @@
-# Cyber Data & Detection Catalog - v0.6.2
+# Cyber Data & Detection Catalog - v0.7.0
 
 Install: copy `cyber_data_catalog/` to `$SPLUNK_HOME/etc/apps/` and restart, or
 upload the tarball via Apps -> Manage Apps -> Install app from file.
@@ -38,6 +38,8 @@ On a fresh install, review the macros below before the first scheduled run.
 | **DC-00 / 00b / 00c** | **seed loaders and integrity check — run these first** |
 | DC-01/02/03 | discovery, reconciliation, shadow-data alert |
 | DC-102 | daily CIM Command Center status snapshot (progress trend) |
+| DC-103 | daily Auditor rollup snapshot (progress trend, point-in-time evidence) |
+| DC-39b | CIRT coverage file pull staleness (ships disabled with the cirt_* inputs) |
 | DC-38c/38d | purge the future-dated junk pairs from `dc_observed` and `dc_index_conformance` |
 | DC-04/05/06 | volume baselines, Tier 0 outage, tiered digest |
 | DC-07/08/09 | environment-aware discovery, dual-home divergence, change-window audit |
@@ -61,9 +63,10 @@ On a fresh install, review the macros below before the first scheduled run.
 ## Dashboards
 `dc_catalog_home` · `dc_dataset_detail` · `dc_data_health` · `dc_impact_analysis` ·
 `dc_migration_pipeline` · `dc_cim_normalization` · `dc_detection_health` · `dc_index_standard` · `dc_coverage_cost_lifecycle` ·
-`dc_infrastructure` · `dc_mitre_matrix` · `dc_cim_coverage_command_center` · `dc_ingestion_quality`
+`dc_infrastructure` · `dc_mitre_matrix` · `dc_cim_coverage_command_center` · `dc_ingestion_quality` ·
+`dc_intake_navigator` · `dc_intake_tracker` · `dc_auditor_rollup`
 
-The nav groups them into four menus: Tenants and Catalog, Data Quality, Detections, Platform.
+The nav groups them into five menus: Tenants and Catalog, Data Quality, Detections, Intake and Audit, Platform.
 
 Drilldown and form pages (not in the nav): `dc_sourcetype_reject` · `dc_infra_promote` · `dc_setup`
 
@@ -129,6 +132,90 @@ To resume: set the input to `disabled = 0` and enable DC-37 and DC-39. Once the 
 DC-37 replaces the hand-maintained file with the GitHub copy, so make sure that copy is current.
 
 ## Changelog
+### 0.7.0
+**CIRT live coverage from GitHub**
+- Two new lookups, `dc_cirt_approved_detections` (the detections CIRT has approved and monitors) and
+  `dc_splunk2_allow` (tenants and sourcetypes allowed into Splunk 2.0). Both ship seeded with the
+  current files and refresh from GitHub through two new `dc_github_file_pull` inputs
+  (`cirt_approved_detections`, `cirt_splunk2_allow`, every 30 minutes).
+  **To turn on:** set each input's `file_path` to where CIRT keeps the file, set `disabled = 0`,
+  and enable DC-39b. The inputs use the GitHub token already stored on the Set Up page.
+- The pull now refuses a file that is missing its `required_columns` or has no data rows, strips a
+  UTF-8 byte-order mark, and compares content with the file on disk instead of a remembered sha.
+  An app reinstall that puts the packaged seed back is therefore corrected on the next run.
+- DC-39 (and the new DC-39b) count only `ok` and `unchanged` runs as successful. Before, any
+  logged run, including errors, reset the staleness clock.
+
+**Detection Health and ATT&CK**
+- New CIRT row: approved detections, how many are enabled, mapped to ATT&CK and healthy, a
+  per-detection live status ("Not found in Splunk", "Enabled - no ATT&CK annotation", ...), and the
+  Splunk 2.0 monitoring scope by tenant.
+- New "How coverage_state is decided" panel. The techniques table now shows, for each technique,
+  `failing_checks` (detections whose data is fine but which fail other health checks),
+  CIRT-approved counts, `blockers` (each unhealthy detection and the check it failed) and `next_step`.
+- DC-43 writes `health_reason`, the checks a detection failed. DC-63 carries it, flags CIRT-approved
+  detections, fixes the sub-technique ID (was written as `T1078\.001`), and keeps one row per
+  technique and detection. DC-62 and DC-63 now rewrite their collections each run
+  (`override_if_empty=false`), so disabled or deleted detections stop counting as coverage.
+- Technique detail adds `cirt_approved`, `healthy` and `health_reason`, and a CIRT-approved-only filter.
+
+**Auditor rollup (`dc_auditor_rollup`)**
+- One row per acquired entity: Splunk-measured % complete for Discovery, Ingest, Splunk 2.0
+  scope, Normalize, Detection, SOC, SIEM contract, CDE and CIM onboarding, with plan status from
+  the auditor workbook timeline. Also a workbook-vs-Splunk reconciliation, tracker consistency
+  findings, a scorecard of what each team tracks, and a source freshness table.
+- New lookup `dc_ae_program` (`lookups/dc_ae_program_seed.csv`), built from the lead auditor's
+  `AE_Log_Source_Matrix_v1.xlsx`: wave, LOB, planned phase end dates and the workbook's own %
+  per phase. The workbook has 9 AEs whose wave differs between its Dashboard and Timeline sheets;
+  both values are kept and the dashboard lists them as findings.
+- DC-103 saves the rollup daily to `summary_datacatalog` (source=`dc_auditor_rollup`).
+
+**Telemetry intake into Splunk**
+- The Telemetry Navigator (`appserver/static/telemetry_navigator/`) now runs inside the app
+  (`dc_intake_navigator`). Opened there, it shows **Save to Splunk**, which writes the request to the
+  new `dc_intake_requests` KV collection using the user's own Splunk session (no tokens in the page).
+  Saving again updates the same request and keeps its intake status.
+- The same two files still work standalone (for example on SharePoint) for AEs without Splunk
+  access: they download or copy the request as JSON for the intake ticket.
+- New `dc_intake_tracker`: every request with its NEHA status, a form to move it to the next status,
+  a paste-JSON import, and a "requested vs arriving" check of each requested technology against
+  what Splunk sees for that AE (via the new `indexFamilies` mapping in `data.js`).
+- Navigator changes: AE UHGID field (suggests AEs from the catalog when in Splunk), a request ID,
+  Import JSON, and the technology-to-index-family mapping.
+- `dc_intake_requests` is writable by admin, sc_admin and splunk_ops. Add the CREU / intake role
+  in `metadata/default.meta` before rollout.
+
+**Refreshing the auditor lookup from the workbook**
+Save this as `build_ae_program_seed.py` outside the app folder, run it against the workbook (needs
+`openpyxl`) and commit the result. Or keep the CSV in Git and enable the `auditor_program` pull.
+```
+python3 build_ae_program_seed.py AE_Log_Source_Matrix_v1.xlsx lookups/dc_ae_program_seed.csv
+```
+```python
+import openpyxl, csv, datetime, sys
+wb=openpyxl.load_workbook(sys.argv[1],data_only=True)
+def d(v):
+    return v.strftime('%Y-%m-%d') if isinstance(v,datetime.datetime) else ('' if v in (None,'N/A') else str(v))
+def p(v):
+    return '' if v is None or isinstance(v,str) else round(v*100,1)
+tl={}
+for r in wb['On-Prem vs Cloud Timeline'].iter_rows(min_row=6,values_only=True):
+    if r[1] and str(r[1]).upper().startswith('UHGID'):
+        tl[r[1].lower()]=r
+rows=[]
+for r in wb['Dashboard'].iter_rows(min_row=5,max_row=40,max_col=25,values_only=True):
+    if not r[1] or not str(r[1]).upper().startswith('UHGID'): continue
+    u=r[1].lower(); t=tl.get(u,[None]*30)
+    rows.append(dict(ae_name=r[0],uhgid=u,wave=r[2] or '',timeline_wave=t[3] or '',lob=r[3] or t[2] or '',
+      wb_discovery_pct=p(r[4]),wb_ingest_saas2_pct=p(r[5]),wb_normalize_pct=p(r[6]),wb_detection_pct=p(r[7]),
+      wb_monitoring_pct=p(r[8]),wb_soc_pct=p(r[9]),wb_overall_pct=p(r[10]),wb_onprem_overall_pct=p(r[17]),wb_cloud_overall_pct=p(r[24]),
+      plan_discovery_end=d(t[5]),plan_ingest_end=d(t[7]),plan_normalize_end=d(t[9]),plan_detect_soc_end=d(t[11]),
+      plan_monitoring_end=d(t[13]),plan_signoff_end=d(t[15]),plan_cloud_migration_end=d(t[19]),plan_overall_complete=d(t[27]),
+      workbook_as_of=wb.properties.modified.strftime('%Y-%m-%d'),workbook_source='AE_Log_Source_Matrix_v1.xlsx'))
+w=csv.DictWriter(open(sys.argv[2],'w',newline=''),fieldnames=list(rows[0]))
+w.writeheader(); w.writerows(rows); print(len(rows))
+```
+
 ### 0.6.2
 - CIM Command Center: **Complete now means a SIEM contract exists for the tenant + sourcetype**,
   so it matches the contract master. Two stages, each with status tiles that add up to it:

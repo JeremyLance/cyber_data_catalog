@@ -10,3 +10,10 @@ export = system
 
 [views]
 export = system
+
+# v0.7.0: intake requests are written from the Telemetry Navigator page and the
+# Intake Tracker by the people running intake (SIEM team, CREU). Add their Splunk
+# role to write here, e.g. write : [ admin, sc_admin, splunk_ops, creu_intake ].
+[collections/dc_intake_requests]
+access = read : [ * ], write : [ admin, sc_admin, splunk_ops ]
+export = system

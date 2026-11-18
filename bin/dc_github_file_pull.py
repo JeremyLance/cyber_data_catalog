@@ -77,6 +77,12 @@ SCHEME_XML = f"""<scheme>
         <data_type>string</data_type>
         <required_on_create>true</required_on_create>
       </arg>
+      <arg name="required_columns">
+        <title>Required columns (optional)</title>
+        <description>Comma-separated header names the file must contain, e.g. alert_name,environment. If any is missing, or the file has no data rows, the existing lookup is kept.</description>
+        <data_type>string</data_type>
+        <required_on_create>false</required_on_create>
+      </arg>
     </args>
   </endpoint>
 </scheme>"""
@@ -156,30 +162,39 @@ def fetch_github_file(token, repo, branch, file_path):
     return content, payload["sha"]
 
 
-def sha_marker_path(target_filename):
-    return os.path.join(LOOKUPS_DIR, f".{target_filename}.sha")
+def normalize_text(text):
+    """Strip a UTF-8 byte-order mark and normalize line endings so Splunk reads
+    the header cleanly and an unchanged file compares equal to the local copy."""
+    text = text.lstrip("\ufeff")
+    return text.replace("\r\n", "\n").replace("\r", "\n")
 
 
-def previous_sha(target_filename):
-    p = sha_marker_path(target_filename)
-    if not os.path.exists(p):
-        return None
-    with open(p) as f:
-        return f.read().strip()
+def local_matches(target_path, text):
+    """True when the lookup on disk already holds exactly this content.
+    Compares file content rather than a remembered GitHub sha, so an app
+    reinstall that puts the packaged seed back is corrected on the next run."""
+    if not os.path.exists(target_path):
+        return False
+    with open(target_path, encoding="utf-8", newline="") as f:
+        return f.read() == text
 
 
-def write_sha(target_filename, sha):
-    with open(sha_marker_path(target_filename), "w") as f:
-        f.write(sha)
-
-
-def looks_like_csv(text):
+def check_csv(text, required_columns):
+    """Return None when the file is usable, otherwise the reason it is not."""
     try:
         reader = csv.reader(io.StringIO(text))
         header = next(reader, None)
-        return header is not None and len(header) > 0
-    except Exception:
-        return False
+        if not header:
+            return "no header row"
+        header = [h.strip().lower() for h in header]
+        missing = [c for c in required_columns if c.lower() not in header]
+        if missing:
+            return "missing required columns: " + ",".join(missing)
+        if not any(any(cell.strip() for cell in row) for row in reader):
+            return "no data rows"
+        return None
+    except Exception as e:
+        return f"not csv-shaped: {e}"
 
 
 def run():
@@ -188,6 +203,7 @@ def run():
     branch = params.get("branch") or "main"
     file_path = params.get("file_path", "")
     target_filename = params.get("target_filename", "")
+    required_columns = [c.strip() for c in (params.get("required_columns") or "").split(",") if c.strip()]
 
     target_path = os.path.join(LOOKUPS_DIR, target_filename)
     tmp_path = target_path + ".tmp"
@@ -211,24 +227,26 @@ def run():
         _emit_event(input_name, "error", str(e))
         return
 
-    if sha == previous_sha(target_filename):
-        log(f"[{input_name}] NO CHANGE: sha {sha} unchanged - skipping write")
-        _emit_event(input_name, "unchanged", sha)
+    text = normalize_text(text)
+
+    problem = check_csv(text, required_columns)
+    if problem:
+        log(f"[{input_name}] VALIDATION FAILED: {problem} - keeping existing file")
+        _emit_event(input_name, "validation_failed", problem)
         return
 
-    if not looks_like_csv(text):
-        log(f"[{input_name}] VALIDATION FAILED: fetched content does not look like a CSV - keeping existing file")
-        _emit_event(input_name, "validation_failed", "not csv-shaped")
+    if local_matches(target_path, text):
+        log(f"[{input_name}] NO CHANGE: {target_filename} already matches sha {sha} - skipping write")
+        _emit_event(input_name, "unchanged", sha)
         return
 
     if os.path.exists(target_path):
         import shutil
         shutil.copy2(target_path, backup_path)
 
-    with open(tmp_path, "w", newline="") as f:
+    with open(tmp_path, "w", encoding="utf-8", newline="") as f:
         f.write(text)
     os.replace(tmp_path, target_path)
-    write_sha(target_filename, sha)
 
     log(f"[{input_name}] PULL OK: wrote {target_filename}, sha={sha}")
     _emit_event(input_name, "ok", sha)
