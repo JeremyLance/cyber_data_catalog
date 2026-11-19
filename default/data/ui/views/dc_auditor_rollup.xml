@@ -2,6 +2,11 @@
   <label>Auditor - AE Program Rollup</label>
   <description>One view of what every team is tracking for each acquired entity: data catalog, SIEM contracts, CIM normalization, CIRT detections and telemetry intake. "Measured" figures come from Splunk now. "Workbook" figures come from the lead auditor's AE_Log_Source_Matrix workbook (dc_ae_program lookup). Open "How these numbers are built" at the bottom for every definition and source.</description>
 
+  <init>
+    <set token="ret_group_label">all groups</set>
+    <set token="ret_status_label">Needs attention</set>
+  </init>
+
   <search id="rollup">
     <query>| `dc_auditor_rollup`</query>
     <earliest>-3d</earliest>
@@ -44,24 +49,25 @@
       <choice value="No plan dates">No plan dates</choice>
       <default>*</default>
     </input>
-    <input type="dropdown" token="idx_scope" searchWhenChanged="true">
-      <label>Indexes shown</label>
-      <choice value="retention_scope=&quot;has a retention rule&quot;">Indexes with a retention rule</choice>
-      <choice value="rule_id=&quot;ES_KEY&quot;">ES indexes (3 years)</choice>
-      <choice value="rule_id=&quot;AE_TENANT&quot;">AE tenant indexes (90 days)</choice>
-      <choice value="rule_id=&quot;CORE&quot;">Core indexes (90 days)</choice>
-      <choice value="retention_scope!=&quot;internal&quot;">All except internal</choice>
-      <choice value="*">All, including internal</choice>
-      <default>retention_scope="has a retention rule"</default>
-    </input>
   </fieldset>
 
-  <search id="retention">
+  <!-- Every index once, with its group. The retention section filters this in the browser,
+       so changing a filter does not re-read the collection. -->
+  <search id="retention_all">
     <query><![CDATA[| inputlookup dc_index_retention_lookup
-| fillnull value="-" uhgid ae_name index_family
-| search uhgid="$ae$" $idx_scope$
-| eval check_order=case(retention_check="BELOW STANDARD",1, retention_check="AT RISK - size cap",2, retention_check="REVIEW - Splunk archive",3, retention_check="CONFIRM ARCHIVE",4, retention_check="LONGER THAN STANDARD",5, retention_check="Meets standard",6, 1=1,7)]]></query>
+| eval idx_group=case(rule_id="AE_TENANT","AE tenant", rule_id="CORE","Core", rule_id="ES_KEY","Enterprise Security", match(index,"^_"),"Splunk internal", 1=1,"Other (no rule)")
+| eval group_order=case(idx_group="AE tenant",1, idx_group="Core",2, idx_group="Enterprise Security",3, idx_group="Splunk internal",4, 1=1,5)
+| eval check_order=case(retention_check="BELOW STANDARD",1, retention_check="AT RISK - size cap",2, retention_check="REVIEW - Splunk archive",3, retention_check="CONFIRM ARCHIVE",4, retention_check="LONGER THAN STANDARD",5, retention_check="Meets standard",6, 1=1,7)
+| fillnull value="-" uhgid ae_name
+| table index idx_group group_order uhgid ae_name rule_id retention_check check_order searchable_days max_searchable_days required_searchable_days archive_provider archive_days total_retention_days long_term_store earliest_event data_age_days current_size_gb max_size_gb size_used_pct event_count datasets catalog_retention_days findings checked]]></query>
     <earliest>-1m</earliest>
+  </search>
+  <search id="retention_grp" base="retention_all">
+    <query>| search idx_group="$ret_group$" uhgid="$ret_ae$" index="$ret_name$"</query>
+  </search>
+  <search id="retention" base="retention_all">
+    <query><![CDATA[| search idx_group="$ret_group$" uhgid="$ret_ae$" index="$ret_name$"
+| where "$ret_status$"="all" OR ("$ret_status$"="attention" AND check_order<=5) OR retention_check="$ret_status$"]]></query>
   </search>
 
   <!-- ============ HEADLINE ============ -->
@@ -253,16 +259,67 @@
   <!-- ============ INDEX LIST AND RETENTION ============ -->
   <row>
     <panel>
+      <title>Index retention - ES indexes 3 years or longer; AE and core indexes 90 days in Splunk, long-term copy in AWS S3</title>
+      <input type="dropdown" token="ret_group" searchWhenChanged="true">
+        <label>Index group</label>
+        <choice value="*">All groups</choice>
+        <choice value="AE tenant">AE tenant</choice>
+        <choice value="Core">Core</choice>
+        <choice value="Enterprise Security">Splunk ES</choice>
+        <choice value="Splunk internal">Splunk internal</choice>
+        <choice value="Other (no rule)">Other (no rule)</choice>
+        <default>*</default>
+        <change>
+          <condition value="AE tenant"><set token="show_ret_ae">true</set><set token="ret_group_label">AE tenant</set></condition>
+          <condition value="*"><unset token="show_ret_ae"></unset><set token="form.ret_ae">*</set><set token="ret_group_label">all groups</set></condition>
+          <condition><unset token="show_ret_ae"></unset><set token="form.ret_ae">*</set><set token="ret_group_label">$label$</set></condition>
+        </change>
+      </input>
+      <input type="dropdown" token="ret_ae" searchWhenChanged="true" depends="$show_ret_ae$">
+        <label>AE</label>
+        <choice value="*">All AEs</choice>
+        <default>*</default>
+        <fieldForLabel>label</fieldForLabel>
+        <fieldForValue>uhgid</fieldForValue>
+        <search base="retention_all"><query>| where idx_group="AE tenant" | stats count by uhgid ae_name | eval label=if(ae_name="-",uhgid,ae_name." (".uhgid.")")." - ".count." indexes" | sort ae_name | fields label uhgid</query></search>
+      </input>
+      <input type="dropdown" token="ret_status" searchWhenChanged="true">
+        <label>Status</label>
+        <choice value="attention">Needs attention</choice>
+        <choice value="all">All statuses</choice>
+        <choice value="BELOW STANDARD">BELOW STANDARD</choice>
+        <choice value="AT RISK - size cap">AT RISK - size cap</choice>
+        <choice value="REVIEW - Splunk archive">REVIEW - Splunk archive</choice>
+        <choice value="CONFIRM ARCHIVE">CONFIRM ARCHIVE</choice>
+        <choice value="LONGER THAN STANDARD">LONGER THAN STANDARD</choice>
+        <choice value="Meets standard">Meets standard</choice>
+        <choice value="No rule">No rule</choice>
+        <default>attention</default>
+        <change>
+          <set token="ret_status_label">$label$</set>
+        </change>
+      </input>
+      <input type="text" token="ret_name" searchWhenChanged="true">
+        <label>Index name (wildcards, e.g. *auth*)</label>
+        <default>*</default>
+      </input>
+      <html>
+        <p style="margin:2px 0;font-size:12px">Start with the summary below: click a row to list that group's (or AE's) indexes. "Needs attention" hides indexes that meet their rule; pick "All statuses" to see every index in the group.</p>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
       <single>
         <title>Indexes listed</title>
-        <search base="retention"><query>| stats count</query></search>
-        <option name="underLabel">matching the filters above</option>
+        <search base="retention_grp"><query>| stats count</query></search>
+        <option name="underLabel">matching the index filters</option>
       </single>
     </panel>
     <panel>
       <single>
         <title>Below the retention standard</title>
-        <search base="retention"><query>| where retention_check="BELOW STANDARD" | stats count</query></search>
+        <search base="retention_grp"><query>| where retention_check="BELOW STANDARD" | stats count</query></search>
         <option name="underLabel">shorter than the index's rule</option>
         <option name="colorMode">block</option>
         <option name="useColors">1</option>
@@ -273,7 +330,7 @@
     <panel>
       <single>
         <title>At risk - size cap</title>
-        <search base="retention"><query>| where retention_check="AT RISK - size cap" | stats count</query></search>
+        <search base="retention_grp"><query>| where retention_check="AT RISK - size cap" | stats count</query></search>
         <option name="underLabel">data leaving by size before the time limit</option>
         <option name="colorMode">block</option>
         <option name="useColors">1</option>
@@ -284,14 +341,14 @@
     <panel>
       <single>
         <title>To review</title>
-        <search base="retention"><query>| where retention_check IN ("REVIEW - Splunk archive","CONFIRM ARCHIVE","LONGER THAN STANDARD") | stats count</query></search>
+        <search base="retention_grp"><query>| where retention_check IN ("REVIEW - Splunk archive","CONFIRM ARCHIVE","LONGER THAN STANDARD") | stats count</query></search>
         <option name="underLabel">Splunk archive on S3-backed index, longer than rule, or archive to confirm</option>
       </single>
     </panel>
     <panel>
       <single>
         <title>Meets standard</title>
-        <search base="retention"><query>| where retention_check!="No rule" | stats count(eval(retention_check="Meets standard")) as ok, count as n | eval pct=if(n&gt;0,round(ok/n*100,1),0) | fields pct</query></search>
+        <search base="retention_grp"><query>| where retention_check!="No rule" | stats count(eval(retention_check="Meets standard")) as ok, count as n | eval pct=if(n&gt;0,round(ok/n*100,1),0) | fields pct</query></search>
         <option name="numberPrecision">0.0</option>
         <option name="unit">%</option>
         <option name="underLabel">of indexes with a retention rule</option>
@@ -301,13 +358,38 @@
 
   <row>
     <panel>
-      <title>Index list and retention - ES indexes 3 years or longer; AE and core indexes 90 days in Splunk, long-term in AWS S3</title>
+      <title>Retention summary by group and AE - click a row to list its indexes</title>
       <table>
-        <search base="retention"><query><![CDATA[| sort check_order index
+        <search base="retention_all"><query><![CDATA[| eval row_ae=if(idx_group="AE tenant", ae_name, "-"), row_uhgid=if(idx_group="AE tenant", uhgid, "*")
+| stats min(group_order) as group_order, count as indexes, sum(eval(if(retention_check="Meets standard",1,0))) as meets, sum(eval(if(retention_check="BELOW STANDARD",1,0))) as below, sum(eval(if(retention_check="AT RISK - size cap",1,0))) as at_risk, sum(eval(if(retention_check IN ("REVIEW - Splunk archive","CONFIRM ARCHIVE","LONGER THAN STANDARD"),1,0))) as review, sum(eval(if(retention_check="No rule",1,0))) as no_rule, min(searchable_days) as min_days, max(searchable_days) as max_days, round(sum(current_size_gb),1) as size_gb by idx_group row_ae row_uhgid
+| eval attention=below+at_risk+review, searchable=if(min_days=max_days, min_days." days", min_days."-".max_days." days")
+| sort group_order - attention row_ae
+| table idx_group row_ae row_uhgid indexes meets below at_risk review no_rule attention searchable size_gb
+| rename idx_group as "Group", row_ae as "AE", row_uhgid as "UHGID", indexes as "Indexes", meets as "Meets standard", below as "Below", at_risk as "At risk - size", review as "To review", no_rule as "No rule", attention as "Needs attention", searchable as "Searchable", size_gb as "Size (GB)"]]></query></search>
+        <option name="count">12</option>
+        <option name="drilldown">row</option>
+        <format type="color" field="Needs attention"><colorPalette type="list">[#53A051,#F1813F]</colorPalette><scale type="threshold">1</scale></format>
+        <format type="color" field="Below"><colorPalette type="list">[#53A051,#DC4E41]</colorPalette><scale type="threshold">1</scale></format>
+        <drilldown>
+          <set token="form.ret_group">$row.Group$</set>
+          <set token="form.ret_ae">$row.UHGID$</set>
+          <set token="form.ret_status">all</set>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Indexes - $ret_group_label$ - $ret_status_label$ ($ret_count$ shown, 15 per page)</title>
+      <table>
+        <search base="retention">
+          <done><set token="ret_count">$job.resultCount$</set></done>
+          <query><![CDATA[| sort check_order index
 | eval rule=if(isnull(rule_id),"none",rule_id), required=case(isnull(rule_id),"", isnotnull(max_searchable_days) AND max_searchable_days=required_searchable_days, required_searchable_days." days", 1=1, required_searchable_days."+ days"), searchable_years=round(searchable_days/365,1), total_years=if(isnull(total_retention_days),"unknown",round(total_retention_days/365,1)), oldest_event=if(isnull(earliest_event),"",strftime(earliest_event,"%Y-%m-%d")), checked=strftime(checked,"%Y-%m-%d %H:%M")
 | table index ae_name uhgid rule required retention_check searchable_days searchable_years archive_provider archive_days total_retention_days total_years long_term_store oldest_event data_age_days current_size_gb max_size_gb size_used_pct event_count datasets catalog_retention_days findings checked
 | rename index as "Index", ae_name as "AE", uhgid as "UHGID", rule as "Rule", required as "Required in Splunk", long_term_store as "Long-term copy", retention_check as "Retention check", searchable_days as "Searchable (days)", searchable_years as "Searchable (years)", archive_provider as "Archive", archive_days as "Archive (days)", total_retention_days as "Total retention (days)", total_years as "Total (years)", oldest_event as "Oldest event", data_age_days as "Oldest event age (days)", current_size_gb as "Size (GB)", max_size_gb as "Size limit (GB)", size_used_pct as "Size used %", event_count as "Events", datasets as "Catalog datasets", catalog_retention_days as "Catalog retention_days", findings as "Findings", checked as "Checked"]]></query></search>
-        <option name="count">50</option>
+        <option name="count">15</option>
         <option name="wrap">true</option>
         <format type="color" field="Retention check"><colorPalette type="map">{"BELOW STANDARD":#DC4E41,"AT RISK - size cap":#F1813F,"REVIEW - Splunk archive":#F8BE34,"CONFIRM ARCHIVE":#F8BE34,"LONGER THAN STANDARD":#006D9C,"Meets standard":#53A051,"No rule":#708794}</colorPalette></format>
         <format type="number" field="Events"><option name="precision">0</option><option name="useThousandSeparators">true</option></format>
@@ -322,7 +404,7 @@
         <search>
           <query><![CDATA[index=summary_datacatalog source="dc_index_retention"
 | fillnull value="-" uhgid
-| search uhgid="$ae$"
+| search uhgid="$ret_ae$" index="$ret_name$"
 | eval day=strftime(_time,"%Y-%m-%d")
 | stats earliest(searchable_days) as first_searchable, latest(searchable_days) as now_searchable, earliest(total_retention_days) as first_total, latest(total_retention_days) as now_total, earliest(day) as first_seen, latest(day) as last_seen, dc(searchable_days) as searchable_values, dc(total_retention_days) as total_values by index
 | where searchable_values>1 OR total_values>1

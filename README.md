@@ -150,6 +150,10 @@ the source of truth: hand edits to `dc_contracts_master.csv` are overwritten on 
   STANDARD (cost), Meets standard, No rule.
 - Results go to the new `dc_index_retention` collection and a daily copy to `summary_datacatalog`
   (source=`dc_index_retention`), so the page also shows retention changes in the last 90 days.
+- The Auditor page's retention section opens on a summary with one row per index group (AE
+  tenant per AE, Core, Splunk ES, Splunk internal, Other); clicking a row lists that group's
+  indexes. Filters: index group, AE, status (default "Needs attention") and index name. The
+  collection is read once per page load and filtered in the browser, 15 rows per page.
 - On Splunk Cloud, searchable days and archive come from the Cloud index manager
   (`searchableDays`, Dynamic Data Active Archive); elsewhere from `frozenTimePeriodInSecs`.
   DC-104 runs as the app owner, so auditors do not need REST access.
