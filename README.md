@@ -1,4 +1,4 @@
-# Cyber Data & Detection Catalog - v0.7.1
+# Cyber Data & Detection Catalog - v0.7.2
 
 Install: copy `cyber_data_catalog/` to `$SPLUNK_HOME/etc/apps/` and restart, or
 upload the tarball via Apps -> Manage Apps -> Install app from file.
@@ -133,6 +133,21 @@ GitHub pull every 2 hours when that pull returns rows (it never writes an empty 
 the source of truth: hand edits to `dc_contracts_master.csv` are overwritten on the next DC-37 run.
 
 ## Changelog
+### 0.7.2
+- **Cataloging is automatic.** A dataset is officially cataloged once it is ingested and the SIEM
+  team gives it a contract. New DC-00f (daily, 05:20) adds every contracted, flowing, non-rejected
+  (tenant, sourcetype) pair that has no catalog record yet. It only creates records, never edits
+  one, so owners, tiers and gates are never overwritten. New records carry the note
+  "Auto-cataloged <date> from SIEM contract <ticket>".
+- **The seed file no longer has to grow.** `dc_datasets_seed.csv` is now only for fields people
+  maintain (owners, tiers, gates). DC-00 still merges it as before.
+- CIM Command Center: the "Not yet cataloged" status is gone; the tile now counts datasets
+  cataloged automatically. DC-03's suggested action now says to contract or reject.
+- Fixed a seed row whose `dataset_id` was `cisco:duo:authentication` instead of
+  `uhgid-000106|cisco:asa`. That row never matched its data. After DC-00 runs, delete the old
+  record with `| inputlookup dc_datasets_lookup | where _key!="cisco:duo:authentication" |
+  outputlookup dc_datasets_lookup`.
+
 ### 0.7.1
 - **Index list and retention on the Auditor page.** DC-104 (daily, 05:30) reads every index's
   settings: searchable days, archive provider and days, total retention, oldest event, size and

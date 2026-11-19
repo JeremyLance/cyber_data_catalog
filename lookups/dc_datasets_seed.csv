@@ -1,5 +1,5 @@
 dataset_id,uhgid,ae_name,index,sourcetype,domain,cim_datamodel,source_system,tenant_type,declared_tier,proposed_tier,tier_rationale,business_owner,technical_owner,content_owner,network_owner,cde_ir_contact,gate1_normalization,gate2_detection,gate3_soc,cde_priority,enterprise_ready,schema_version,contract_status,status,onboard_date,retention_days,pipeline,environment,notes,last_reviewed,catalog_source
-cisco:duo:authentication,uhgid-000106,SCA,sec_traffic_uhgid-000106,cisco:asa,traffic,Intrusion_Detection / Network_Traffic,,AE,Tier 3,Tier 3,,,Hansika Sharma,Amit Tarade,,,,,,,,,,,,90,,saas2,,,
+uhgid-000106|cisco:asa,uhgid-000106,SCA,sec_traffic_uhgid-000106,cisco:asa,traffic,Intrusion_Detection / Network_Traffic,,AE,Tier 3,Tier 3,,,Hansika Sharma,Amit Tarade,,,,,,,,,,,,90,,saas2,,,
 core|XmlWinEventLog,core,Core,sec_os_core,XmlWinEventLog,os,Endpoint|Change,,CORE,Tier 3,Tier 3,,Adam McNeil,Neha Doshi,Mark Suri,,Mike Baker,,,,,,,none,,,90,,saas2,,,
 core|_json,core,Core,sec_edr_core,_json,edr,,,CORE,Tier 5,Tier 5,,Adam McNeil,Neha Doshi,Mark Suri,,Mike Baker,,,,,,,,,,90,,saas2,,,
 core|a10_icac_web,core,Core,sec_other_core,a10_icac_web,Other,,,CORE,Tier 3,Tier 3,,Adam McNeil,,,,Mike Baker,Complete,Not Started,,,,,none,,,90,,saas2,,,
