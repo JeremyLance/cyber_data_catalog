@@ -138,9 +138,12 @@ the source of truth: hand edits to `dc_contracts_master.csv` are overwritten on 
   settings: searchable days, archive provider and days, total retention, oldest event, size and
   size limit. It checks each index against its rule in the new `dc_retention_policy` lookup
   (`lookups/dc_retention_policy_seed.csv`; the first matching `index_regex` by `rule_order` wins):
-  - `ES_KEY` - `notable`, `notable_summary`, `risk`, `threat_activity`: kept in Splunk 3 years or longer.
-  - `AE_TENANT` - `sec_*_uhgid-NNNNNN`: 90 days hot in Splunk, no Splunk archive. AE edge
-    processors send the long-term copy to AWS S3.
+  - `ES_KEY` - every non-system Enterprise Security index (`notable`, `notable_summary`, `risk`,
+    `threat_activity`, `ioc`, `sequenced_events`, `cim_modactions`, `cim_summary`, `audit_summary`,
+    `endpoint_summary`, `gia_summary`, `whois`, `ers`, `ueba`, `ueba_summaries`, `cms_main`, `ba_test`,
+    `pci`, `pci_posture_summary`, `pci_summary`): kept in Splunk 3 years or longer.
+  - `AE_TENANT` - `sec_*_uhgid-NNNNNN` and `CORE` - `sec_*_core`: 90 days hot in Splunk, no Splunk
+    archive. Edge processors send the long-term copy to AWS S3.
   - Anything else shows as "No rule" until a rule is added to the CSV.
 - Checks: BELOW STANDARD, AT RISK - size cap (data leaving by size before the time limit),
   REVIEW - Splunk archive (archive set on an S3-backed index), CONFIRM ARCHIVE, LONGER THAN
