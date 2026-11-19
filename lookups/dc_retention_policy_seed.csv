@@ -1,0 +1,3 @@
+rule_order,rule_id,index_regex,applies_to,min_searchable_days,max_searchable_days,min_total_days,splunk_archive,long_term_store,notes
+1,ES_KEY,^(notable|notable_summary|risk|threat_activity)$,"ES key indexes (notables, risk, threat activity)",1095,,1095,allowed,Splunk,"Kept in Splunk for 3 years or longer. Add any other ES index that must be kept this long to the regex."
+2,AE_TENANT,^sec_[a-z0-9_]+_uhgid-\d+$,AE tenant security indexes,90,90,90,none,AWS S3 via AE edge processors,"90 days hot in Splunk, no Splunk archive. AE edge processors send the same logs to AWS S3 for long-term storage; Splunk cannot see that copy."

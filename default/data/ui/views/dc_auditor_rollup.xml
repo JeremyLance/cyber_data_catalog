@@ -46,10 +46,12 @@
     </input>
     <input type="dropdown" token="idx_scope" searchWhenChanged="true">
       <label>Indexes shown</label>
-      <choice value="retention_scope=&quot;security index&quot;">Security indexes</choice>
+      <choice value="retention_scope=&quot;has a retention rule&quot;">Indexes with a retention rule</choice>
+      <choice value="rule_id=&quot;ES_KEY&quot;">ES key indexes (3 years)</choice>
+      <choice value="rule_id=&quot;AE_TENANT&quot;">AE tenant indexes (90 days)</choice>
       <choice value="retention_scope!=&quot;internal&quot;">All except internal</choice>
       <choice value="*">All, including internal</choice>
-      <default>retention_scope="security index"</default>
+      <default>retention_scope="has a retention rule"</default>
     </input>
   </fieldset>
 
@@ -57,7 +59,7 @@
     <query><![CDATA[| inputlookup dc_index_retention_lookup
 | fillnull value="-" uhgid ae_name index_family
 | search uhgid="$ae$" $idx_scope$
-| eval check_order=case(retention_check="BELOW STANDARD",1, retention_check="AT RISK - size cap",2, retention_check="CONFIRM ARCHIVE",3, retention_check="Meets standard",4, 1=1,5)]]></query>
+| eval check_order=case(retention_check="BELOW STANDARD",1, retention_check="AT RISK - size cap",2, retention_check="REVIEW - Splunk archive",3, retention_check="CONFIRM ARCHIVE",4, retention_check="LONGER THAN STANDARD",5, retention_check="Meets standard",6, 1=1,7)]]></query>
     <earliest>-1m</earliest>
   </search>
 
@@ -260,7 +262,7 @@
       <single>
         <title>Below the retention standard</title>
         <search base="retention"><query>| where retention_check="BELOW STANDARD" | stats count</query></search>
-        <option name="underLabel">under 12 months searchable or 3 years total</option>
+        <option name="underLabel">shorter than the index's rule</option>
         <option name="colorMode">block</option>
         <option name="useColors">1</option>
         <option name="rangeColors">["0x53a051","0xdc4e41"]</option>
@@ -280,33 +282,33 @@
     </panel>
     <panel>
       <single>
-        <title>Confirm archive</title>
-        <search base="retention"><query>| where retention_check="CONFIRM ARCHIVE" | stats count</query></search>
-        <option name="underLabel">customer-managed archive, check outside Splunk</option>
+        <title>To review</title>
+        <search base="retention"><query>| where retention_check IN ("REVIEW - Splunk archive","CONFIRM ARCHIVE","LONGER THAN STANDARD") | stats count</query></search>
+        <option name="underLabel">Splunk archive on S3-backed index, longer than rule, or archive to confirm</option>
       </single>
     </panel>
     <panel>
       <single>
         <title>Meets standard</title>
-        <search base="retention"><query>| where retention_check!="Not assessed" | stats count(eval(retention_check="Meets standard")) as ok, count as n | eval pct=if(n&gt;0,round(ok/n*100,1),0) | fields pct</query></search>
+        <search base="retention"><query>| where retention_check!="No rule" | stats count(eval(retention_check="Meets standard")) as ok, count as n | eval pct=if(n&gt;0,round(ok/n*100,1),0) | fields pct</query></search>
         <option name="numberPrecision">0.0</option>
         <option name="unit">%</option>
-        <option name="underLabel">of assessed security indexes</option>
+        <option name="underLabel">of indexes with a retention rule</option>
       </single>
     </panel>
   </row>
 
   <row>
     <panel>
-      <title>Index list and retention - checked against the Logging Standard (12 months searchable, 3 years total)</title>
+      <title>Index list and retention - ES key indexes 3 years or longer; AE tenant indexes 90 days in Splunk, long-term in AWS S3</title>
       <table>
         <search base="retention"><query><![CDATA[| sort check_order index
-| eval searchable_years=round(searchable_days/365,1), total_years=if(isnull(total_retention_days),"unknown",round(total_retention_days/365,1)), oldest_event=if(isnull(earliest_event),"",strftime(earliest_event,"%Y-%m-%d")), checked=strftime(checked,"%Y-%m-%d %H:%M")
-| table index ae_name uhgid index_family retention_check searchable_days searchable_years archive_provider archive_days total_retention_days total_years oldest_event data_age_days current_size_gb max_size_gb size_used_pct event_count datasets catalog_retention_days findings checked
-| rename index as "Index", ae_name as "AE", uhgid as "UHGID", index_family as "Index family", retention_check as "Retention check", searchable_days as "Searchable (days)", searchable_years as "Searchable (years)", archive_provider as "Archive", archive_days as "Archive (days)", total_retention_days as "Total retention (days)", total_years as "Total (years)", oldest_event as "Oldest event", data_age_days as "Oldest event age (days)", current_size_gb as "Size (GB)", max_size_gb as "Size limit (GB)", size_used_pct as "Size used %", event_count as "Events", datasets as "Catalog datasets", catalog_retention_days as "Catalog retention_days", findings as "Findings", checked as "Checked"]]></query></search>
+| eval rule=if(isnull(rule_id),"none",rule_id), required=case(isnull(rule_id),"", isnotnull(max_searchable_days) AND max_searchable_days=required_searchable_days, required_searchable_days." days", 1=1, required_searchable_days."+ days"), searchable_years=round(searchable_days/365,1), total_years=if(isnull(total_retention_days),"unknown",round(total_retention_days/365,1)), oldest_event=if(isnull(earliest_event),"",strftime(earliest_event,"%Y-%m-%d")), checked=strftime(checked,"%Y-%m-%d %H:%M")
+| table index ae_name uhgid rule required retention_check searchable_days searchable_years archive_provider archive_days total_retention_days total_years long_term_store oldest_event data_age_days current_size_gb max_size_gb size_used_pct event_count datasets catalog_retention_days findings checked
+| rename index as "Index", ae_name as "AE", uhgid as "UHGID", rule as "Rule", required as "Required in Splunk", long_term_store as "Long-term copy", retention_check as "Retention check", searchable_days as "Searchable (days)", searchable_years as "Searchable (years)", archive_provider as "Archive", archive_days as "Archive (days)", total_retention_days as "Total retention (days)", total_years as "Total (years)", oldest_event as "Oldest event", data_age_days as "Oldest event age (days)", current_size_gb as "Size (GB)", max_size_gb as "Size limit (GB)", size_used_pct as "Size used %", event_count as "Events", datasets as "Catalog datasets", catalog_retention_days as "Catalog retention_days", findings as "Findings", checked as "Checked"]]></query></search>
         <option name="count">50</option>
         <option name="wrap">true</option>
-        <format type="color" field="Retention check"><colorPalette type="map">{"BELOW STANDARD":#DC4E41,"AT RISK - size cap":#F1813F,"CONFIRM ARCHIVE":#F8BE34,"Meets standard":#53A051,"Not assessed":#708794}</colorPalette></format>
+        <format type="color" field="Retention check"><colorPalette type="map">{"BELOW STANDARD":#DC4E41,"AT RISK - size cap":#F1813F,"REVIEW - Splunk archive":#F8BE34,"CONFIRM ARCHIVE":#F8BE34,"LONGER THAN STANDARD":#006D9C,"Meets standard":#53A051,"No rule":#708794}</colorPalette></format>
         <format type="number" field="Events"><option name="precision">0</option><option name="useThousandSeparators">true</option></format>
       </table>
     </panel>
@@ -350,7 +352,7 @@
 | append [| inputlookup dc_datasets_lookup | lookup dc_observed_lookup dataset_id OUTPUT last_seen | stats count as total, sum(eval(if(isnotnull(technical_owner) AND technical_owner!="",1,0))) as owner, sum(eval(if(isnotnull(declared_tier) AND declared_tier!="" AND declared_tier!="Tier 5",1,0))) as tier, sum(eval(if(isnotnull(last_seen) AND now()-last_seen<86400,1,0))) as flowing | eval rows=mvappend("1|Datasets cataloged|".total, "2|With a technical owner|".owner, "3|With a CDE tier (1-4)|".tier, "4|Flowing in last 24h|".flowing), team="4. Data catalog", source="dc_datasets + dc_observed"]
 | append [| inputlookup dc_requirement_coverage_lookup | where required="Yes" | stats count as total, sum(eval(if(status="GAP - REQUIRED",1,0))) as gaps, sum(eval(if(status="COVERED",1,0))) as covered | eval rows=mvappend("1|Required log-source requirements (tenant x requirement)|".total, "2|Covered|".covered, "3|Required but missing|".gaps), team="5. Federated requirements (discovery)", source="DC-60"]
 | append [| inputlookup dc_intake_requests_lookup | stats count as total, sum(eval(if(status IN ("Complete","Rejected"),0,1))) as open, sum(eval(if(status="Complete",1,0))) as done | eval rows=mvappend("1|Intake requests|".coalesce(total,0), "2|Open|".coalesce(open,0), "3|Complete|".coalesce(done,0)), team="6. Telemetry intake (CREU / AE)", source="dc_intake_requests"]
-| append [| inputlookup dc_index_retention_lookup | where retention_scope="security index" | stats count as total, sum(eval(if(retention_check="Meets standard",1,0))) as ok, sum(eval(if(retention_check="BELOW STANDARD",1,0))) as below, sum(eval(if(retention_check="AT RISK - size cap",1,0))) as atrisk, sum(eval(if(retention_check="CONFIRM ARCHIVE",1,0))) as confirm | eval rows=mvappend("1|Security indexes|".total, "2|Meet the retention standard|".ok, "3|Below the retention standard|".below, "4|At risk - size cap|".atrisk, "5|Archive to confirm outside Splunk|".confirm), team="7. Platform retention", source="DC-104"]
+| append [| inputlookup dc_index_retention_lookup | where isnotnull(rule_id) | stats sum(eval(if(rule_id="ES_KEY",1,0))) as es, sum(eval(if(rule_id="ES_KEY" AND retention_check="Meets standard",1,0))) as es_ok, sum(eval(if(rule_id="AE_TENANT",1,0))) as ae, sum(eval(if(rule_id="AE_TENANT" AND retention_check="Meets standard",1,0))) as ae_ok, sum(eval(if(retention_check="BELOW STANDARD",1,0))) as below, sum(eval(if(retention_check="AT RISK - size cap",1,0))) as atrisk, sum(eval(if(retention_check IN ("REVIEW - Splunk archive","CONFIRM ARCHIVE","LONGER THAN STANDARD"),1,0))) as review | eval rows=mvappend("1|ES key indexes (3 years or longer)|".es, "2|ES key indexes meeting their rule|".es_ok, "3|AE tenant indexes (90 days in Splunk)|".ae, "4|AE tenant indexes meeting their rule|".ae_ok, "5|Below their rule|".below, "6|At risk - size cap|".atrisk, "7|To review (archive or longer than rule)|".review), team="7. Platform retention", source="DC-104 + dc_retention_policy"]
 | mvexpand rows
 | eval parts=split(rows,"|"), n=tonumber(mvindex(parts,0)), metric=mvindex(parts,1), value=mvindex(parts,2)
 | sort team n
@@ -401,7 +403,7 @@
             <li><b>SIEM contract % / CDE approved %</b> - datasets whose sourcetype and index have a completed SIEM contract / CDE approval in the contract master.</li>
             <li><b>CIM fully onboarded %</b> - the AE's sourcetypes in the "Fully onboarded" status on the latest CIM Command Center snapshot.</li>
             <li><b>Overall %</b> - the average of Discovery, Ingest, Normalize, Detection and SOC. The workbook's Overall also averages Monitoring Live, which Splunk cannot measure, so expect the two to differ.</li>
-            <li><b>Retention check</b> - from each index's settings (DC-104, daily). Security indexes (sec_* in the naming standard, or any index the catalog has a dataset in) must be searchable for 12 months and kept for 3 years including archive (Logging Standard 6.3). <b>AT RISK - size cap</b>: the index is at 90% or more of its size limit and its oldest event is younger than its retention, so data is leaving by size. <b>CONFIRM ARCHIVE</b>: the archive is customer-managed, so its retention has to be checked outside Splunk. <b>Catalog retention_days</b> is what the catalog records for the index's datasets, shown for comparison only.</li>
+            <li><b>Retention check</b> - each index's settings (DC-104, daily) against its rule in <code>dc_retention_policy</code>. <b>ES_KEY</b> (notable, notable_summary, risk, threat_activity): kept in Splunk 3 years or longer. <b>AE_TENANT</b> (sec_*_uhgid-NNNNNN): 90 days hot in Splunk with no Splunk archive; AE edge processors send the long-term copy to AWS S3, which Splunk cannot see. <b>AT RISK - size cap</b>: 90% or more of the size limit and the oldest event is younger than the retention, so data is leaving by size. <b>REVIEW - Splunk archive</b>: a Splunk archive is set on an index whose long-term copy belongs in S3. <b>LONGER THAN STANDARD</b>: searchable longer than the rule (a cost question, not a gap). <b>No rule</b>: no rule matches the index name yet, for example core indexes.</li>
             <li><b>Behind plan</b> - a phase's planned end date (workbook timeline, on-prem path) has passed and the phase is below 100%.</li>
           </ul>
           <p>Workbook figures are a point-in-time copy (see "Workbook as of"). To refresh them, regenerate <code>lookups/dc_ae_program_seed.csv</code> from the workbook, or turn on the <code>auditor_program</code> GitHub pull.</p>
