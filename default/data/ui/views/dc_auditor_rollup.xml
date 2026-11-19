@@ -44,7 +44,22 @@
       <choice value="No plan dates">No plan dates</choice>
       <default>*</default>
     </input>
+    <input type="dropdown" token="idx_scope" searchWhenChanged="true">
+      <label>Indexes shown</label>
+      <choice value="retention_scope=&quot;security index&quot;">Security indexes</choice>
+      <choice value="retention_scope!=&quot;internal&quot;">All except internal</choice>
+      <choice value="*">All, including internal</choice>
+      <default>retention_scope="security index"</default>
+    </input>
   </fieldset>
+
+  <search id="retention">
+    <query><![CDATA[| inputlookup dc_index_retention_lookup
+| fillnull value="-" uhgid ae_name index_family
+| search uhgid="$ae$" $idx_scope$
+| eval check_order=case(retention_check="BELOW STANDARD",1, retention_check="AT RISK - size cap",2, retention_check="CONFIRM ARCHIVE",3, retention_check="Meets standard",4, 1=1,5)]]></query>
+    <earliest>-1m</earliest>
+  </search>
 
   <!-- ============ HEADLINE ============ -->
   <row>
@@ -232,6 +247,94 @@
     </panel>
   </row>
 
+  <!-- ============ INDEX LIST AND RETENTION ============ -->
+  <row>
+    <panel>
+      <single>
+        <title>Indexes listed</title>
+        <search base="retention"><query>| stats count</query></search>
+        <option name="underLabel">matching the filters above</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Below the retention standard</title>
+        <search base="retention"><query>| where retention_check="BELOW STANDARD" | stats count</query></search>
+        <option name="underLabel">under 12 months searchable or 3 years total</option>
+        <option name="colorMode">block</option>
+        <option name="useColors">1</option>
+        <option name="rangeColors">["0x53a051","0xdc4e41"]</option>
+        <option name="rangeValues">[0]</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>At risk - size cap</title>
+        <search base="retention"><query>| where retention_check="AT RISK - size cap" | stats count</query></search>
+        <option name="underLabel">data leaving by size before the time limit</option>
+        <option name="colorMode">block</option>
+        <option name="useColors">1</option>
+        <option name="rangeColors">["0x53a051","0xf1813f"]</option>
+        <option name="rangeValues">[0]</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Confirm archive</title>
+        <search base="retention"><query>| where retention_check="CONFIRM ARCHIVE" | stats count</query></search>
+        <option name="underLabel">customer-managed archive, check outside Splunk</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Meets standard</title>
+        <search base="retention"><query>| where retention_check!="Not assessed" | stats count(eval(retention_check="Meets standard")) as ok, count as n | eval pct=if(n&gt;0,round(ok/n*100,1),0) | fields pct</query></search>
+        <option name="numberPrecision">0.0</option>
+        <option name="unit">%</option>
+        <option name="underLabel">of assessed security indexes</option>
+      </single>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Index list and retention - checked against the Logging Standard (12 months searchable, 3 years total)</title>
+      <table>
+        <search base="retention"><query><![CDATA[| sort check_order index
+| eval searchable_years=round(searchable_days/365,1), total_years=if(isnull(total_retention_days),"unknown",round(total_retention_days/365,1)), oldest_event=if(isnull(earliest_event),"",strftime(earliest_event,"%Y-%m-%d")), checked=strftime(checked,"%Y-%m-%d %H:%M")
+| table index ae_name uhgid index_family retention_check searchable_days searchable_years archive_provider archive_days total_retention_days total_years oldest_event data_age_days current_size_gb max_size_gb size_used_pct event_count datasets catalog_retention_days findings checked
+| rename index as "Index", ae_name as "AE", uhgid as "UHGID", index_family as "Index family", retention_check as "Retention check", searchable_days as "Searchable (days)", searchable_years as "Searchable (years)", archive_provider as "Archive", archive_days as "Archive (days)", total_retention_days as "Total retention (days)", total_years as "Total (years)", oldest_event as "Oldest event", data_age_days as "Oldest event age (days)", current_size_gb as "Size (GB)", max_size_gb as "Size limit (GB)", size_used_pct as "Size used %", event_count as "Events", datasets as "Catalog datasets", catalog_retention_days as "Catalog retention_days", findings as "Findings", checked as "Checked"]]></query></search>
+        <option name="count">50</option>
+        <option name="wrap">true</option>
+        <format type="color" field="Retention check"><colorPalette type="map">{"BELOW STANDARD":#DC4E41,"AT RISK - size cap":#F1813F,"CONFIRM ARCHIVE":#F8BE34,"Meets standard":#53A051,"Not assessed":#708794}</colorPalette></format>
+        <format type="number" field="Events"><option name="precision">0</option><option name="useThousandSeparators">true</option></format>
+      </table>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Retention changes in the last 90 days (from the DC-104 daily copy)</title>
+      <table>
+        <search>
+          <query><![CDATA[index=summary_datacatalog source="dc_index_retention"
+| fillnull value="-" uhgid
+| search uhgid="$ae$"
+| eval day=strftime(_time,"%Y-%m-%d")
+| stats earliest(searchable_days) as first_searchable, latest(searchable_days) as now_searchable, earliest(total_retention_days) as first_total, latest(total_retention_days) as now_total, earliest(day) as first_seen, latest(day) as last_seen, dc(searchable_days) as searchable_values, dc(total_retention_days) as total_values by index
+| where searchable_values>1 OR total_values>1
+| eval change=if(now_searchable<first_searchable OR now_total<first_total,"Reduced","Increased or changed")
+| table index first_seen first_searchable now_searchable first_total now_total change last_seen
+| rename index as "Index", first_seen as "First snapshot", first_searchable as "Searchable then", now_searchable as "Searchable now", first_total as "Total then", now_total as "Total now", change as "Change", last_seen as "Latest snapshot"]]></query>
+          <earliest>-90d@d</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="count">20</option>
+        <format type="color" field="Change"><colorPalette type="map">{"Reduced":#DC4E41}</colorPalette></format>
+      </table>
+    </panel>
+  </row>
+
   <!-- ============ TEAM SCORECARD ============ -->
   <row>
     <panel>
@@ -247,6 +350,7 @@
 | append [| inputlookup dc_datasets_lookup | lookup dc_observed_lookup dataset_id OUTPUT last_seen | stats count as total, sum(eval(if(isnotnull(technical_owner) AND technical_owner!="",1,0))) as owner, sum(eval(if(isnotnull(declared_tier) AND declared_tier!="" AND declared_tier!="Tier 5",1,0))) as tier, sum(eval(if(isnotnull(last_seen) AND now()-last_seen<86400,1,0))) as flowing | eval rows=mvappend("1|Datasets cataloged|".total, "2|With a technical owner|".owner, "3|With a CDE tier (1-4)|".tier, "4|Flowing in last 24h|".flowing), team="4. Data catalog", source="dc_datasets + dc_observed"]
 | append [| inputlookup dc_requirement_coverage_lookup | where required="Yes" | stats count as total, sum(eval(if(status="GAP - REQUIRED",1,0))) as gaps, sum(eval(if(status="COVERED",1,0))) as covered | eval rows=mvappend("1|Required log-source requirements (tenant x requirement)|".total, "2|Covered|".covered, "3|Required but missing|".gaps), team="5. Federated requirements (discovery)", source="DC-60"]
 | append [| inputlookup dc_intake_requests_lookup | stats count as total, sum(eval(if(status IN ("Complete","Rejected"),0,1))) as open, sum(eval(if(status="Complete",1,0))) as done | eval rows=mvappend("1|Intake requests|".coalesce(total,0), "2|Open|".coalesce(open,0), "3|Complete|".coalesce(done,0)), team="6. Telemetry intake (CREU / AE)", source="dc_intake_requests"]
+| append [| inputlookup dc_index_retention_lookup | where retention_scope="security index" | stats count as total, sum(eval(if(retention_check="Meets standard",1,0))) as ok, sum(eval(if(retention_check="BELOW STANDARD",1,0))) as below, sum(eval(if(retention_check="AT RISK - size cap",1,0))) as atrisk, sum(eval(if(retention_check="CONFIRM ARCHIVE",1,0))) as confirm | eval rows=mvappend("1|Security indexes|".total, "2|Meet the retention standard|".ok, "3|Below the retention standard|".below, "4|At risk - size cap|".atrisk, "5|Archive to confirm outside Splunk|".confirm), team="7. Platform retention", source="DC-104"]
 | mvexpand rows
 | eval parts=split(rows,"|"), n=tonumber(mvindex(parts,0)), metric=mvindex(parts,1), value=mvindex(parts,2)
 | sort team n
@@ -271,6 +375,7 @@
 | append [| inputlookup dc_detection_health_lookup | stats max(checked) as c | eval src="Detection health (DC-41/43)", refreshed=strftime(c,"%Y-%m-%d %H:%M")]
 | append [| inputlookup dc_attack_coverage_lookup | stats max(checked) as c | eval src="ATT&CK coverage (DC-62)", refreshed=strftime(c,"%Y-%m-%d %H:%M")]
 | append [| inputlookup dc_requirement_coverage_lookup | stats max(checked) as c | eval src="Federated requirements (DC-60)", refreshed=strftime(c,"%Y-%m-%d %H:%M")]
+| append [| inputlookup dc_index_retention_lookup | stats max(checked) as c | eval src="Index list and retention (DC-104)", refreshed=strftime(c,"%Y-%m-%d %H:%M")]
 | append [search index=summary_datacatalog source="dc_cim_progress" earliest=-7d | stats max(snapshot) as c | eval src="CIM Command Center snapshot (DC-102)", refreshed=strftime(c,"%Y-%m-%d %H:%M")]
 | append [| inputlookup dc_observed_lookup | stats max(last_seen) as c | eval src="Observed datasets (DC-01/07)", refreshed=strftime(c,"%Y-%m-%d %H:%M")]
 | append [search index=_internal sourcetype="dc:github_file_pull" earliest=-7d | stats latest(_time) as c, latest(status) as st by input_name | eval src="GitHub pull: ".replace(input_name,"dc_github_file_pull://",""), refreshed=strftime(c,"%Y-%m-%d %H:%M")." (".st.")"]
@@ -296,6 +401,7 @@
             <li><b>SIEM contract % / CDE approved %</b> - datasets whose sourcetype and index have a completed SIEM contract / CDE approval in the contract master.</li>
             <li><b>CIM fully onboarded %</b> - the AE's sourcetypes in the "Fully onboarded" status on the latest CIM Command Center snapshot.</li>
             <li><b>Overall %</b> - the average of Discovery, Ingest, Normalize, Detection and SOC. The workbook's Overall also averages Monitoring Live, which Splunk cannot measure, so expect the two to differ.</li>
+            <li><b>Retention check</b> - from each index's settings (DC-104, daily). Security indexes (sec_* in the naming standard, or any index the catalog has a dataset in) must be searchable for 12 months and kept for 3 years including archive (Logging Standard 6.3). <b>AT RISK - size cap</b>: the index is at 90% or more of its size limit and its oldest event is younger than its retention, so data is leaving by size. <b>CONFIRM ARCHIVE</b>: the archive is customer-managed, so its retention has to be checked outside Splunk. <b>Catalog retention_days</b> is what the catalog records for the index's datasets, shown for comparison only.</li>
             <li><b>Behind plan</b> - a phase's planned end date (workbook timeline, on-prem path) has passed and the phase is below 100%.</li>
           </ul>
           <p>Workbook figures are a point-in-time copy (see "Workbook as of"). To refresh them, regenerate <code>lookups/dc_ae_program_seed.csv</code> from the workbook, or turn on the <code>auditor_program</code> GitHub pull.</p>

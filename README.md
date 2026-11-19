@@ -1,4 +1,4 @@
-# Cyber Data & Detection Catalog - v0.7.0
+# Cyber Data & Detection Catalog - v0.7.1
 
 Install: copy `cyber_data_catalog/` to `$SPLUNK_HOME/etc/apps/` and restart, or
 upload the tarball via Apps -> Manage Apps -> Install app from file.
@@ -39,6 +39,7 @@ On a fresh install, review the macros below before the first scheduled run.
 | DC-01/02/03 | discovery, reconciliation, shadow-data alert |
 | DC-102 | daily CIM Command Center status snapshot (progress trend) |
 | DC-103 | daily Auditor rollup snapshot (progress trend, point-in-time evidence) |
+| DC-104 | daily index list and retention check against the Logging Standard |
 | DC-39b | CIRT coverage file pull staleness (ships disabled with the cirt_* inputs) |
 | DC-38c/38d | purge the future-dated junk pairs from `dc_observed` and `dc_index_conformance` |
 | DC-04/05/06 | volume baselines, Tier 0 outage, tiered digest |
@@ -132,6 +133,20 @@ GitHub pull every 2 hours when that pull returns rows (it never writes an empty 
 the source of truth: hand edits to `dc_contracts_master.csv` are overwritten on the next DC-37 run.
 
 ## Changelog
+### 0.7.1
+- **Index list and retention on the Auditor page.** DC-104 (daily, 05:30) reads every index's
+  settings: searchable days, archive provider and days, total retention, oldest event, size and
+  size limit. It checks security indexes against the Logging Standard 6.3 (12 months searchable,
+  3 years total; numbers in the `dc_retention_requirement` macro). Results go to the new
+  `dc_index_retention` collection and a daily copy to `summary_datacatalog`
+  (source=`dc_index_retention`).
+- Auditor page adds: retention tiles, the index list with a Retention check column
+  (BELOW STANDARD / AT RISK - size cap / CONFIRM ARCHIVE / Meets standard), retention changes in
+  the last 90 days, a "Platform retention" scorecard section and an "Indexes shown" filter.
+- On Splunk Cloud, searchable days and archive come from the Cloud index manager
+  (`searchableDays`, Dynamic Data Active Archive); elsewhere from `frozenTimePeriodInSecs`.
+  DC-104 runs as the app owner, so auditors do not need REST access.
+
 ### 0.7.0
 **CIRT live coverage from GitHub**
 - Two new lookups, `dc_cirt_approved_detections` (the detections CIRT has approved and monitors) and
