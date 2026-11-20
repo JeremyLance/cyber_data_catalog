@@ -37,7 +37,6 @@
       <choice value="*">All statuses</choice>
       <choice value="Malformed or rejected">Malformed or rejected</choice>
       <choice value="Ingested - no contract">Ingested - no contract</choice>
-      <choice value="Contract extension needed">Contract extension needed</choice>
       <choice value="Contracted - no data seen">Contracted - no data seen</choice>
       <choice value="CIM normalization gap">CIM normalization gap</choice>
       <choice value="Awaiting CDE approval">Awaiting CDE approval</choice>
@@ -181,7 +180,7 @@
   <row>
     <panel>
       <html>
-        <p style="margin:0"><b>Needs contract</b> - why each sourcetype has no contract for its tenant yet (adds up to Needs contract):</p>
+        <p style="margin:0"><b>Needs contract</b> - why each sourcetype has no contract yet - none for this tenant, another AE or Core (adds up to Needs contract):</p>
       </html>
     </panel>
   </row>
@@ -228,27 +227,6 @@
         </drilldown>
       </single>
     </panel>
-    <panel>
-      <single>
-        <title>Contract extension needed</title>
-        <search base="recon"><query>| where status_bucket="Contract extension needed" | stats count</query></search>
-        <option name="colorMode">block</option>
-        <option name="rangeColors">["0x53a051","0xf8be34"]</option>
-        <option name="rangeValues">[0]</option>
-        <option name="useColors">1</option>
-        <drilldown>
-          <set token="form.status_filter">Contract extension needed</set>
-          <set token="status_filter">Contract extension needed</set>
-          <set token="form.stage_filter">*</set>
-          <set token="stage_filter">*</set>
-          <set token="form.tab">recon</set>
-          <set token="tab_recon">true</set>
-          <unset token="tab_contracts"></unset>
-          <unset token="tab_cim"></unset>
-          <unset token="tab_help"></unset>
-        </drilldown>
-      </single>
-    </panel>
   </row>
   <row>
     <panel>
@@ -283,7 +261,7 @@
       <single>
         <title>Cataloged automatically</title>
         <search><query>| inputlookup dc_datasets_lookup | where match(notes,"^Auto-cataloged") | stats count</query><earliest>-1m</earliest></search>
-        <option name="underLabel">contracted, flowing datasets added by DC-00f</option>
+        <option name="underLabel">contracted (own or shared), flowing datasets added by DC-00f</option>
         <option name="colorMode">none</option>
       </single>
     </panel>
@@ -364,7 +342,7 @@
         <option name="count">10</option>
         <option name="drilldown">row</option>
         <format type="color" field="status_bucket">
-          <colorPalette type="map">{"Malformed or rejected":#af575a, "Ingested - no contract":#dc4e41, "Contract extension needed":#f8be34, "Contracted - no data seen":#006d9c, "Not yet cataloged":#7b56db, "CIM normalization gap":#00a4a6, "Awaiting CDE approval":#9cc65d, "Fully onboarded":#53a051}</colorPalette>
+          <colorPalette type="map">{"Malformed or rejected":#af575a, "Ingested - no contract":#dc4e41, "Contracted - no data seen":#006d9c, "CIM normalization gap":#00a4a6, "Awaiting CDE approval":#9cc65d, "Fully onboarded":#53a051}</colorPalette>
         </format>
         <format type="color" field="stage">
           <colorPalette type="map">{"Contract complete":#53A051,"Needs contract":#DC4E41}</colorPalette>
@@ -390,11 +368,11 @@
 | addtotals fieldname=_total
 | sort - _total
 | head 25
-| table tenant "Fully onboarded" "Awaiting CDE approval" "CIM normalization gap" "Contracted - no data seen" "Contract extension needed" "Ingested - no contract" "Malformed or rejected"</query></search>
+| table tenant "Fully onboarded" "Awaiting CDE approval" "CIM normalization gap" "Contracted - no data seen" "Ingested - no contract" "Malformed or rejected"</query></search>
         <option name="charting.chart">bar</option>
         <option name="charting.chart.stackMode">stacked</option>
         <option name="charting.legend.placement">bottom</option>
-        <option name="charting.fieldColors">{"Malformed or rejected":0xaf575a, "Ingested - no contract":0xdc4e41, "Contract extension needed":0xf8be34, "Contracted - no data seen":0x006d9c, "Not yet cataloged":0x7b56db, "CIM normalization gap":0x00a4a6, "Awaiting CDE approval":0x9cc65d, "Fully onboarded":0x53a051}</option>
+        <option name="charting.fieldColors">{"Malformed or rejected":0xaf575a, "Ingested - no contract":0xdc4e41, "Contracted - no data seen":0x006d9c, "CIM normalization gap":0x00a4a6, "Awaiting CDE approval":0x9cc65d, "Fully onboarded":0x53a051}</option>
         <option name="height">400</option>
       </chart>
     </panel>
@@ -475,18 +453,18 @@
         <search base="recon">
           <query>| search stage="$stage_filter$" status_bucket="$status_filter$"
 | sort bucket_order - events_7d
-| table stage status_bucket owner priority ae_name index sourcetype events_7d last_seen sourcetype_check in_catalog contract contract_ticket cde_approved expected_cim cim_models_scored cim_score cim_flag gap</query>
+| table stage status_bucket owner priority ae_name index sourcetype events_7d last_seen sourcetype_check in_catalog contract contract_held_by contract_ticket cde_approved expected_cim cim_models_scored cim_score cim_flag gap</query>
         </search>
         <option name="count">50</option>
         <option name="drilldown">none</option>
         <format type="color" field="status_bucket">
-          <colorPalette type="map">{"Malformed or rejected":#af575a, "Ingested - no contract":#dc4e41, "Contract extension needed":#f8be34, "Contracted - no data seen":#006d9c, "Not yet cataloged":#7b56db, "CIM normalization gap":#00a4a6, "Awaiting CDE approval":#9cc65d, "Fully onboarded":#53a051}</colorPalette>
+          <colorPalette type="map">{"Malformed or rejected":#af575a, "Ingested - no contract":#dc4e41, "Contracted - no data seen":#006d9c, "CIM normalization gap":#00a4a6, "Awaiting CDE approval":#9cc65d, "Fully onboarded":#53a051}</colorPalette>
         </format>
         <format type="color" field="sourcetype_check">
           <colorPalette type="map">{"MALFORMED":#DC4E41,"REJECTED":#F1813F,"ok":#53A051}</colorPalette>
         </format>
         <format type="color" field="contract">
-          <colorPalette type="map">{"NO CONTRACT":#DC4E41,"OTHER TENANT ONLY":#F8BE34,"CONTRACTED":#53A051}</colorPalette>
+          <colorPalette type="map">{"NO CONTRACT":#DC4E41,"CONTRACTED - SHARED":#9CC65D,"CONTRACTED":#53A051}</colorPalette>
         </format>
         <format type="color" field="cde_approved">
           <colorPalette type="map">{"yes":#53A051,"pending":#F8BE34}</colorPalette>
@@ -906,16 +884,15 @@
       <title>How to read this dashboard</title>
       <html>
         <h3>Executive summary</h3>
-        <p>Each count is one sourcetype in one tenant index (the same sourcetype in two indexes counts twice). It covers every sourcetype seen in the last 7 days plus every sourcetype in the contract master. <b>Contracts complete</b> means a SIEM contract exists for this tenant and sourcetype, so it matches the contract master. <b>Needs contract</b> is the remaining work. Together they make up <b>Sourcetypes tracked</b>. Inside each stage, every sourcetype has exactly one status, the first step it has not passed, so each row of tiles adds up to its headline tile. Click any tile, or a row in the status summary, to list those sourcetypes on the reconciliation tab.</p>
+        <p>Each count is one sourcetype in one tenant index (the same sourcetype in two indexes counts twice). It covers every sourcetype seen in the last 7 days plus every sourcetype in the contract master. <b>Contracts complete</b> means a SIEM contract exists for the sourcetype: on this tenant's index, or shared from another AE or Core that already has a contract for the same sourcetype (the SIEM team has approved it, so it is cataloged too). <b>Needs contract</b> is the remaining work. Together they make up <b>Sourcetypes tracked</b>. Inside each stage, every sourcetype has exactly one status, the first step it has not passed, so each row of tiles adds up to its headline tile. Click any tile, or a row in the status summary, to list those sourcetypes on the reconciliation tab.</p>
         <table class="table table-condensed">
           <tr><th>Stage</th><th>Status</th><th>Meaning</th><th>Owner of the next step</th></tr>
           <tr><td>Needs contract</td><td>Malformed or rejected</td><td>The sourcetype name is raw event text, or the sourcetype was reviewed and rejected.</td><td>Splunk admin / tenant AE</td></tr>
           <tr><td>Needs contract</td><td>Ingested - no contract</td><td>Data is arriving, but no contract exists for this sourcetype anywhere.</td><td>Tenant AE + SIEM validation</td></tr>
-          <tr><td>Needs contract</td><td>Contract extension needed</td><td>Contracted for another tenant, not this one.</td><td>SIEM validation</td></tr>
           <tr><td>Contract complete</td><td>Contracted - no data seen</td><td>Contracted, but no data arrived in 7 days.</td><td>Tenant AE</td></tr>
           <tr><td>Contract complete</td><td>CIM normalization gap</td><td>CIM score under 50, or expected to feed a data model it does not reach.</td><td>Normalization team</td></tr>
           <tr><td>Contract complete</td><td>Awaiting CDE approval</td><td>Everything else is done; CDE has not signed off.</td><td>CDE</td></tr>
-          <tr><td>Contract complete</td><td>Fully onboarded</td><td>Contracted, flowing, CIM normalized and CDE approved. Contracted, flowing datasets are added to the catalog automatically each night (DC-00f), so there is no separate cataloging step.</td><td>-</td></tr>
+          <tr><td>Contract complete</td><td>Fully onboarded</td><td>Contracted, flowing, CIM normalized and CDE approved. Contracted, flowing datasets - including shared contracts - are added to the catalog automatically every 2 hours (DC-00f), so there is no separate cataloging step.</td><td>-</td></tr>
         </table>
         <p>These differ from the Catalog home page on purpose: that page counts datasets (tenant + sourcetype) in the catalog and shadow datasets seen in the last 24 hours. This page counts sourcetypes per tenant index over 7 days, against the contract master.</p>
         <p><b>Progress over time</b> is filled by DC-102, which saves the counts once a day. It keeps only the latest snapshot per day, so rerunning DC-102 replaces that day's bar.</p>
@@ -926,12 +903,12 @@
           <tr><th>Column</th><th>Meaning</th></tr>
           <tr><td>sourcetype_check</td><td><b>MALFORMED</b>: the name contains raw event text or a config comment, not a real sourcetype; fix it at the source. <b>REJECTED</b>: reviewed and rejected; the AE should stop sending it. <b>ok</b>: valid name.</td></tr>
           <tr><td>SIEM status / CDE status</td><td>Two separate approvals. <b>SIEM complete</b>: the SIEM validation team finished the contract and notified CDE (notification_sent is true in the contract master). <b>CDE approved</b>: CDE has signed off (cde_approval is true); anything else is <b>pending CDE</b>. The "SIEM contracts and CDE" tab lists every contract with both statuses and how long it has waited on CDE.</td></tr>
-          <tr><td>contract</td><td><b>CONTRACTED</b>: a contract exists for this sourcetype in this tenant's index. <b>OTHER TENANT ONLY</b>: contracted elsewhere, not for this tenant. <b>NO CONTRACT</b>: data is being ingested with no contract.</td></tr>
+          <tr><td>contract</td><td><b>CONTRACTED</b>: a contract exists for this sourcetype in this tenant's index. <b>CONTRACTED - SHARED</b>: no contract on this tenant's index, but another AE or Core holds one for the same sourcetype (contract_held_by names it); it counts as contracted and is cataloged. <b>NO CONTRACT</b>: data is being ingested with no contract.</td></tr>
           <tr><td>cde_approved</td><td>Whether CDE has approved the contract (<b>pending</b> until the contract master says true).</td></tr>
           <tr><td>expected_cim</td><td>The data models the contract or the catalog says this sourcetype should feed.</td></tr>
           <tr><td>cim_score / cim_flag</td><td>The best CIM field coverage score for this sourcetype (see below). <b>NOT IN SCORED MODELS</b> means none of its events reached the 11 data models the scorecard (DC-101a-k) covers, usually because it is not mapped to any CIM data model (or is not tagged for one).</td></tr>
           <tr><td>priority</td><td><b>HIGH</b>: malformed or rejected sourcetype, or data ingested with no contract. <b>MEDIUM</b>: any other gap. <b>OK</b>: no gap.</td></tr>
-          <tr><td>gap</td><td>The single most important action for the row, in priority order: sourcetype problem, no data, no contract, contract for another tenant only, not cataloged, CIM gap, awaiting CDE.</td></tr>
+          <tr><td>gap</td><td>The single most important action for the row, in priority order: sourcetype problem, no data, no contract, CIM gap, awaiting CDE.</td></tr>
         </table>
 
         <h3>CIM field coverage score</h3>

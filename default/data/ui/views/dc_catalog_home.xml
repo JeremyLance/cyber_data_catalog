@@ -1,15 +1,19 @@
 <form script="dc_table_export.js" theme="dark" version="1.1">
   <label>Cyber Data Catalog - Browse</label>
-  <description>Every tenant x index x sourcetype we know about, what tier it is, who owns it, and whether it is actually flowing. The filters apply to every panel.</description>
+  <description>Every tenant x index x sourcetype we know about, what tier it is, who owns it, and whether it is actually flowing. A dataset is cataloged automatically once it is ingested and its sourcetype has a SIEM contract - for this tenant, or shared from another AE or Core. Per-tenant flowing vs cataloged coverage is on the Auditor page.</description>
 
-  <!-- Loaded once per page view; every panel below post-processes these. -->
+  <!-- Loaded once per page view; every panel and the Tenant and Domain filters post-process
+       these, so changing a filter does not re-read the collections. -->
   <search id="catalog">
     <query>| inputlookup dc_datasets_lookup
 | `dc_contract_state`
+| `dc_effective_gates`
 | lookup dc_observed_lookup dataset_id OUTPUT last_seen events_24h
 | lookup dc_baselines_lookup dataset_id OUTPUT median_events mad_events
 | `dc_default_silence`
-| fields dataset_id uhgid ae_name domain index sourcetype declared_tier proposed_tier status technical_owner contract_status siem_status contract_ticket contract_date schema_version gate1_normalization gate2_detection gate3_soc enterprise_ready last_seen events_24h median_events mad_events max_silence_minutes</query>
+| eval silence_min=if(isnull(last_seen),null(),round((now()-last_seen)/60,1))
+| eval health=case(isnull(last_seen),"NEVER_SEEN", silence_min&gt;max_silence_minutes,"DATA_DOWN", isnotnull(median_events) AND events_24h&lt;(median_events-4*mad_events),"VOLUME_LOW", 1=1,"OK")
+| fields dataset_id uhgid ae_name domain index sourcetype declared_tier proposed_tier status technical_owner contract_status contract_scope contract_held_by siem_status contract_ticket contract_date schema_version gate1_normalization gate1_source gate2_detection gate2_source gate3_soc enterprise_ready last_seen events_24h health notes</query>
     <earliest>-1m</earliest>
   </search>
   <search id="contracts">
@@ -30,7 +34,7 @@
       <default>*</default>
       <fieldForLabel>ae_name</fieldForLabel>
       <fieldForValue>uhgid</fieldForValue>
-      <search><query>| inputlookup dc_datasets_lookup | stats first(ae_name) as ae_name by uhgid | eval ae_name=ae_name." (".uhgid.")" | sort ae_name</query></search>
+      <search base="catalog"><query>| stats first(ae_name) as ae_name by uhgid | eval ae_name=ae_name." (".uhgid.")" | sort ae_name</query></search>
     </input>
     <input type="dropdown" token="domain" searchWhenChanged="true">
       <label>Domain</label>
@@ -38,7 +42,7 @@
       <default>*</default>
       <fieldForLabel>domain</fieldForLabel>
       <fieldForValue>domain</fieldForValue>
-      <search><query>| inputlookup dc_datasets_lookup | stats count by domain</query></search>
+      <search base="catalog"><query>| stats count by domain | where domain!="" | sort domain</query></search>
     </input>
     <input type="dropdown" token="tier" searchWhenChanged="true">
       <label>Tier</label>
@@ -53,6 +57,23 @@
     </input>
     <input type="text" token="st" searchWhenChanged="true">
       <label>Sourcetype contains</label>
+      <default>*</default>
+    </input>
+    <input type="dropdown" token="health" searchWhenChanged="true">
+      <label>Health (catalog table)</label>
+      <choice value="*">All</choice>
+      <choice value="DATA_DOWN">DATA_DOWN</choice>
+      <choice value="VOLUME_LOW">VOLUME_LOW</choice>
+      <choice value="NEVER_SEEN">NEVER_SEEN</choice>
+      <choice value="OK">OK</choice>
+      <default>*</default>
+    </input>
+    <input type="dropdown" token="siem" searchWhenChanged="true">
+      <label>SIEM status (catalog table)</label>
+      <choice value="*">All</choice>
+      <choice value="SIEM complete">SIEM complete</choice>
+      <choice value="SIEM in progress">SIEM in progress</choice>
+      <choice value="no contract">no contract</choice>
       <default>*</default>
     </input>
   </fieldset>
@@ -130,15 +151,16 @@
 
   <row>
     <panel>
-      <title>Catalog</title>
+      <title>Catalog - $cat_count$ datasets match the filters (10 per page)</title>
       <table>
-        <search base="catalog"><query>| search uhgid=$tenant|s$ domain=$domain|s$ declared_tier=$tier|s$ sourcetype=*$st$*
-| eval silence_min=if(isnull(last_seen),null(),round((now()-last_seen)/60,1))
-| eval health=case(isnull(last_seen),"NEVER_SEEN", silence_min&gt;max_silence_minutes,"DATA_DOWN", isnotnull(median_events) AND events_24h&lt;(median_events-4*mad_events),"VOLUME_LOW", 1=1,"OK")
-| eval last_seen=strftime(last_seen,"%Y-%m-%d %H:%M")
-| table dataset_id ae_name domain index sourcetype declared_tier proposed_tier health events_24h last_seen technical_owner siem_status contract_ticket contract_date schema_version gate1_normalization gate2_detection gate3_soc enterprise_ready
-| sort declared_tier ae_name sourcetype</query></search>
-        <option name="count">25</option>
+        <search base="catalog">
+          <done><set token="cat_count">$job.resultCount$</set></done>
+          <query>| search uhgid=$tenant|s$ domain=$domain|s$ declared_tier=$tier|s$ sourcetype=*$st$* health=$health|s$ siem_status=$siem|s$
+| eval last_seen=strftime(last_seen,"%Y-%m-%d %H:%M"), contract=case(contract_scope="this tenant","own", contract_scope="another tenant or Core","shared - ".contract_held_by, 1=1,""), gate1_normalization=gate1_normalization.if(gate1_source="measured"," (measured)",""), gate2_detection=gate2_detection.if(gate2_source="measured"," (measured)","")
+| table dataset_id ae_name domain index sourcetype declared_tier proposed_tier health events_24h last_seen technical_owner siem_status contract contract_ticket contract_date schema_version gate1_normalization gate2_detection gate3_soc enterprise_ready
+| sort declared_tier ae_name sourcetype</query>
+        </search>
+        <option name="count">10</option>
         <option name="drilldown">cell</option>
         <format type="color" field="health">
           <colorPalette type="map">{"DATA_DOWN":#DC4E41,"VOLUME_LOW":#F8BE34,"OK":#53A051,"NEVER_SEEN":#8C8C8C}</colorPalette>
@@ -158,18 +180,6 @@
 
   <row>
     <panel>
-      <title>Tenant x Domain coverage (flowing / cataloged)</title>
-      <table>
-        <search base="catalog"><query>| where status="active" | search uhgid=$tenant|s$ declared_tier=$tier|s$ sourcetype=*$st$*
-| eval flowing=if(isnotnull(last_seen) AND (now()-last_seen)&lt;86400,1,0)
-| chart sum(flowing) as flowing count as cataloged over ae_name by domain</query></search>
-        <option name="count">30</option>
-      </table>
-    </panel>
-  </row>
-
-  <row>
-    <panel>
       <title>Shadow dataset classification - see DC-38</title>
       <chart>
         <search base="shadow"><query>| search uhgid=$tenant|s$ sourcetype=*$st$* | stats count by classification</query></search>
@@ -177,7 +187,7 @@
       </chart>
     </panel>
     <panel>
-      <title>Unmatched/novel sourcetypes needing a new contract (click a row to reject it instead)</title>
+      <title>Ingested with no contract anywhere - needs a new SIEM contract (click a row to reject it instead)</title>
       <table>
         <search base="shadow"><query>| search uhgid=$tenant|s$ sourcetype=*$st$* | where classification="UNMATCHED_NOVEL" | stats sum(events_24h) as events_24h by uhgid, sourcetype, index | sort - events_24h</query></search>
         <option name="count">10</option>
@@ -191,13 +201,23 @@
 
   <row>
     <panel>
-      <title>Uncataloged data that already has a SIEM contract - add to the catalog</title>
+      <title>Cataloged automatically from a SIEM contract - last 30 days (DC-00f, every 2 hours)</title>
       <table>
-        <search base="shadow"><query>| search uhgid=$tenant|s$ sourcetype=*$st$* | where classification IN ("CONTRACT_MATCHED_EXACT","CONTRACT_MATCHED_OTHER_TENANT") | eval contract_match=if(classification="CONTRACT_MATCHED_EXACT","this tenant","another tenant only"), contract_ticket=coalesce(exact_ticket,any_ticket) | table dataset_id uhgid sourcetype index contract_match contract_ticket events_24h | sort contract_match - events_24h</query></search>
+        <search base="catalog"><query>| where match(notes,"^Auto-cataloged")
+| search uhgid=$tenant|s$ domain=$domain|s$ sourcetype=*$st$*
+| rex field=notes "^Auto-cataloged (?&lt;cataloged_on&gt;\d{4}-\d{2}-\d{2})"
+| where strptime(cataloged_on,"%Y-%m-%d")&gt;=relative_time(now(),"-30d@d")
+| eval contract=case(contract_scope="this tenant","this tenant", contract_scope="another tenant or Core","shared - ".contract_held_by, 1=1,"contract no longer in master")
+| table cataloged_on dataset_id ae_name sourcetype index contract contract_ticket siem_status events_24h
+| sort - cataloged_on ae_name</query></search>
         <option name="count">10</option>
-        <format type="color" field="contract_match">
-          <colorPalette type="map">{"this tenant":#53A051,"another tenant only":#F8BE34}</colorPalette>
+        <option name="drilldown">cell</option>
+        <format type="color" field="siem_status">
+          <colorPalette type="map">{"SIEM complete":#53A051,"SIEM in progress":#F8BE34,"no contract":#DC4E41}</colorPalette>
         </format>
+        <drilldown>
+          <link target="_blank">/app/cyber_data_catalog/dc_dataset_detail?form.dataset_id=$row.dataset_id$</link>
+        </drilldown>
       </table>
     </panel>
     <panel>

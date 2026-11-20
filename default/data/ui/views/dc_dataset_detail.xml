@@ -5,14 +5,14 @@
       <label>Dataset</label>
       <fieldForLabel>dataset_id</fieldForLabel>
       <fieldForValue>dataset_id</fieldForValue>
-      <search><query>| inputlookup dc_datasets_lookup | stats count by dataset_id | sort dataset_id</query></search>
+      <search><query>| inputlookup dc_datasets_lookup | fields dataset_id | sort dataset_id</query></search>
     </input>
   </fieldset>
   <row>
     <panel>
-      <title>Catalog record and contract</title>
+      <title>Catalog record, SIEM contract and gates</title>
       <table>
-        <search><query>| inputlookup dc_datasets_lookup | where dataset_id="$dataset_id$" | lookup dc_contracts_lookup dataset_id OUTPUT tier expected_events_min expected_events_max max_silence_minutes sla_response_minutes approved_by contract_url | transpose | rename column as Attribute, "row 1" as Value | where Value!=""</query><earliest>-1m</earliest></search>
+        <search><query>| inputlookup dc_datasets_lookup | where dataset_id="$dataset_id$" | `dc_contract_state` | `dc_effective_gates` | lookup dc_contracts_lookup dataset_id OUTPUT tier expected_events_min expected_events_max max_silence_minutes sla_response_minutes approved_by contract_url | transpose | rename column as Attribute, "row 1" as Value | where Value!=""</query><earliest>-1m</earliest></search>
         <option name="count">40</option>
       </table>
     </panel>

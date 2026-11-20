@@ -105,7 +105,7 @@
         <search base="filtered"><query>| stats sum(g1) as n, sum(datasets) as d | eval pct=if(d&gt;0,round(n/d*100,1),0) | fields pct</query></search>
         <option name="numberPrecision">0.0</option>
         <option name="unit">%</option>
-        <option name="underLabel">gate 1</option>
+        <option name="underLabel">gate 1, measured or set</option>
       </single>
     </panel>
     <panel>
@@ -114,7 +114,7 @@
         <search base="filtered"><query>| stats sum(g2) as n, sum(datasets) as d | eval pct=if(d&gt;0,round(n/d*100,1),0) | fields pct</query></search>
         <option name="numberPrecision">0.0</option>
         <option name="unit">%</option>
-        <option name="underLabel">gate 2, incl. not needed</option>
+        <option name="underLabel">gate 2, measured or set, incl. not needed</option>
       </single>
     </panel>
     <panel>
@@ -132,7 +132,7 @@
         <search base="filtered"><query>| stats sum(siem_done) as n, sum(datasets) as d | eval pct=if(d&gt;0,round(n/d*100,1),0) | fields pct</query></search>
         <option name="numberPrecision">0.0</option>
         <option name="unit">%</option>
-        <option name="underLabel">datasets with a completed contract</option>
+        <option name="underLabel">datasets with a completed contract (own or shared)</option>
       </single>
     </panel>
   </row>
@@ -432,7 +432,7 @@
 | append [search index=summary_datacatalog source="dc_cim_progress" earliest=-3d | eventstats max(snapshot) as ls | where snapshot=ls | stats sum(count) as total, sum(eval(if(status_bucket="Fully onboarded",count,0))) as done, sum(eval(if(status_bucket="CIM normalization gap",count,0))) as cimgap, sum(eval(if(stage="Needs contract",count,0))) as needs | eval rows=mvappend("1|Sourcetypes tracked (tenant x sourcetype)|".total, "2|Fully onboarded|".done, "3|CIM normalization gap|".cimgap, "4|Needs a contract|".needs), team="2. Normalization (CIM Command Center)", source="DC-102 latest snapshot"]
 | append [| `dc_cirt_detection_status` | stats count as total, sum(eval(if(live_order>=3,1,0))) as enabled, sum(eval(if(live_order>=6,1,0))) as mapped, sum(eval(if(live_order=7,1,0))) as healthy | eval rows=mvappend("1|CIRT approved detections|".total, "2|Enabled in Splunk|".enabled, "3|Mapped to ATT&CK|".mapped, "4|Healthy now|".healthy), team="3. CIRT detections", source="dc_cirt_approved_detections + DC-43/63"]
 | append [| inputlookup dc_attack_coverage_lookup | stats count as total, sum(eval(if(coverage_state="covered",1,0))) as cov, sum(eval(if(coverage_state="NO HEALTHY COVERAGE",1,0))) as none, sum(eval(if(coverage_state="SINGLE POINT OF FAILURE",1,0))) as spof | eval rows=mvappend("5|ATT&CK techniques with a mapped detection|".total, "6|Techniques covered|".cov, "7|Techniques single point of failure|".spof, "8|Techniques with no healthy coverage|".none), team="3. CIRT detections", source="DC-62"]
-| append [| inputlookup dc_datasets_lookup | lookup dc_observed_lookup dataset_id OUTPUT last_seen | stats count as total, sum(eval(if(isnotnull(technical_owner) AND technical_owner!="",1,0))) as owner, sum(eval(if(isnotnull(declared_tier) AND declared_tier!="" AND declared_tier!="Tier 5",1,0))) as tier, sum(eval(if(isnotnull(last_seen) AND now()-last_seen<86400,1,0))) as flowing | eval rows=mvappend("1|Datasets cataloged|".total, "2|With a technical owner|".owner, "3|With a CDE tier (1-4)|".tier, "4|Flowing in last 24h|".flowing), team="4. Data catalog", source="dc_datasets + dc_observed"]
+| append [| inputlookup dc_datasets_lookup | lookup dc_observed_lookup dataset_id OUTPUT last_seen | `dc_contract_state` | `dc_effective_gates` | stats count as total, sum(eval(if(isnotnull(technical_owner) AND technical_owner!="",1,0))) as owner, sum(eval(if(isnotnull(declared_tier) AND declared_tier!="" AND declared_tier!="Tier 5",1,0))) as tier, sum(eval(if(isnotnull(last_seen) AND now()-last_seen<86400,1,0))) as flowing, sum(eval(if(match(notes,"^Auto-cataloged"),1,0))) as auto, sum(eval(if(contract_scope="another tenant or Core",1,0))) as shared, sum(eval(if(gate1_source="measured",1,0))) as g1m, sum(eval(if(gate2_source="measured",1,0))) as g2m, sum(eval(if(enterprise_ready="Yes",1,0))) as ready | eval rows=mvappend("1|Datasets cataloged|".total, "2|Cataloged automatically from a SIEM contract (DC-00f)|".auto, "3|Contracted through a shared contract (another AE or Core)|".shared, "4|With a technical owner|".owner, "5|With a CDE tier (1-4)|".tier, "6|Flowing in last 24h|".flowing, "7|Normalization gate set from measured CIM coverage (DC-45)|".g1m, "8|Detection gate set from measured detections (DC-45)|".g2m, "9|Enterprise ready (all three gates done)|".ready), team="4. Data catalog", source="dc_datasets + dc_observed + DC-00f + DC-45"]
 | append [| inputlookup dc_requirement_coverage_lookup | where required="Yes" | stats count as total, sum(eval(if(status="GAP - REQUIRED",1,0))) as gaps, sum(eval(if(status="COVERED",1,0))) as covered | eval rows=mvappend("1|Required log-source requirements (tenant x requirement)|".total, "2|Covered|".covered, "3|Required but missing|".gaps), team="5. Federated requirements (discovery)", source="DC-60"]
 | append [| inputlookup dc_intake_requests_lookup | stats count as total, sum(eval(if(status IN ("Complete","Rejected"),0,1))) as open, sum(eval(if(status="Complete",1,0))) as done | eval rows=mvappend("1|Intake requests|".coalesce(total,0), "2|Open|".coalesce(open,0), "3|Complete|".coalesce(done,0)), team="6. Telemetry intake (CREU / AE)", source="dc_intake_requests"]
 | append [| inputlookup dc_index_retention_lookup | where isnotnull(rule_id) | stats sum(eval(if(rule_id="ES_KEY",1,0))) as es, sum(eval(if(rule_id="ES_KEY" AND retention_check="Meets standard",1,0))) as es_ok, sum(eval(if(rule_id="AE_TENANT",1,0))) as ae, sum(eval(if(rule_id="AE_TENANT" AND retention_check="Meets standard",1,0))) as ae_ok, sum(eval(if(rule_id="CORE",1,0))) as core, sum(eval(if(rule_id="CORE" AND retention_check="Meets standard",1,0))) as core_ok, sum(eval(if(retention_check="BELOW STANDARD",1,0))) as below, sum(eval(if(retention_check="AT RISK - size cap",1,0))) as atrisk, sum(eval(if(retention_check IN ("REVIEW - Splunk archive","CONFIRM ARCHIVE","LONGER THAN STANDARD"),1,0))) as review | eval rows=mvappend("1|ES indexes (3 years or longer)|".es, "2|ES indexes meeting their rule|".es_ok, "3|AE tenant indexes (90 days in Splunk)|".ae, "4|AE tenant indexes meeting their rule|".ae_ok, "5|Core indexes (90 days in Splunk)|".core, "6|Core indexes meeting their rule|".core_ok, "7|Below their rule|".below, "8|At risk - size cap|".atrisk, "9|To review (archive or longer than rule)|".review), team="7. Platform retention", source="DC-104 + dc_retention_policy"]
@@ -463,6 +463,8 @@
 | append [| inputlookup dc_index_retention_lookup | stats max(checked) as c | eval src="Index list and retention (DC-104)", refreshed=strftime(c,"%Y-%m-%d %H:%M")]
 | append [search index=summary_datacatalog source="dc_cim_progress" earliest=-7d | stats max(snapshot) as c | eval src="CIM Command Center snapshot (DC-102)", refreshed=strftime(c,"%Y-%m-%d %H:%M")]
 | append [| inputlookup dc_observed_lookup | stats max(last_seen) as c | eval src="Observed datasets (DC-01/07)", refreshed=strftime(c,"%Y-%m-%d %H:%M")]
+| append [| inputlookup dc_dataset_gates_lookup | stats max(checked) as c | eval src="Measured dataset gates (DC-45)", refreshed=strftime(c,"%Y-%m-%d %H:%M")]
+| append [| inputlookup dc_datasets_lookup | where match(notes,"^Auto-cataloged") | rex field=notes "^Auto-cataloged (?<d>\d{4}-\d{2}-\d{2})" | stats max(d) as refreshed | eval src="Last dataset auto-cataloged (DC-00f)"]
 | append [search index=_internal sourcetype="dc:github_file_pull" earliest=-7d | stats latest(_time) as c, latest(status) as st by input_name | eval src="GitHub pull: ".replace(input_name,"dc_github_file_pull://",""), refreshed=strftime(c,"%Y-%m-%d %H:%M")." (".st.")"]
 | where isnotnull(refreshed)
 | table src refreshed
@@ -482,8 +484,8 @@
             <li><b>Discovery %</b> - required federated log-source requirements for the AE that have data cataloged or flowing (DC-60). Where DC-60 has no rows for the AE, Overall uses the workbook's Discovery figure instead.</li>
             <li><b>Ingest 24h %</b> - cataloged datasets with events in the last 24 hours.</li>
             <li><b>Splunk 2.0 scope %</b> - datasets covered by CIRT's Splunk 2.0 allow list (pulled from GitHub).</li>
-            <li><b>Normalize / Detection / SOC %</b> - catalog gates 1, 2 and 3. As in the workbook, Detection and SOC count Complete, No Detection Needed and Covered as done.</li>
-            <li><b>SIEM contract % / CDE approved %</b> - datasets whose sourcetype and index have a completed SIEM contract / CDE approval in the contract master.</li>
+            <li><b>Normalize / Detection / SOC %</b> - catalog gates 1, 2 and 3. As in the workbook, Detection and SOC count Complete, No Detection Needed and Covered as done. Gates 1 and 2 are measured daily by DC-45 and the further-along of the measured and person-entered value is used, so a gate set by a person is never lowered: <b>Normalize</b> is Complete when the dataset's best CIM coverage score is 50 or more (the same rule as the CIM Command Center); <b>Detection</b> is Covered when an enabled, healthy correlation search reads the dataset directly or through a CIM data model it is normalized into. <b>SOC</b> cannot be measured from Splunk and stays person-entered.</li>
+            <li><b>SIEM contract % / CDE approved %</b> - datasets with a completed SIEM contract / CDE approval in the contract master, for this tenant's index or shared from another AE or Core that holds a contract for the same sourcetype. Every contracted dataset is cataloged automatically (DC-00f, every 2 hours), so new datasets join these counts without a seed-file change.</li>
             <li><b>CIM fully onboarded %</b> - the AE's sourcetypes in the "Fully onboarded" status on the latest CIM Command Center snapshot.</li>
             <li><b>Overall %</b> - the average of Discovery, Ingest, Normalize, Detection and SOC. The workbook's Overall also averages Monitoring Live, which Splunk cannot measure, so expect the two to differ.</li>
             <li><b>Retention check</b> - each index's settings (DC-104, daily) against its rule in <code>dc_retention_policy</code>. <b>ES_KEY</b> (every Enterprise Security index: notable, risk, threat_activity, cim_modactions, audit_summary, ueba and the rest): kept in Splunk 3 years or longer. <b>AE_TENANT</b> (sec_*_uhgid-NNNNNN) and <b>CORE</b> (sec_*_core): 90 days hot in Splunk with no Splunk archive; edge processors send the long-term copy to AWS S3, which Splunk cannot see. <b>AT RISK - size cap</b>: 90% or more of the size limit and the oldest event is younger than the retention, so data is leaving by size. <b>REVIEW - Splunk archive</b>: a Splunk archive is set on an index whose long-term copy belongs in S3. <b>LONGER THAN STANDARD</b>: searchable longer than the rule (a cost question, not a gap). <b>No rule</b>: no rule matches the index name yet.</li>

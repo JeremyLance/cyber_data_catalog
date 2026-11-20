@@ -36,7 +36,8 @@ On a fresh install, review the macros below before the first scheduled run.
 | ID | Purpose |
 |---|---|
 | **DC-00 / 00b / 00c** | **seed loaders and integrity check — run these first** |
-| DC-01/02/03 | discovery, reconciliation, shadow-data alert |
+| DC-00f | every 2 hours: catalog every ingested dataset whose sourcetype has a SIEM contract (own or shared) |
+| DC-01/02/03 | discovery, reconciliation, shadow-data alert (uncontracted data only) |
 | DC-102 | daily CIM Command Center status snapshot (progress trend) |
 | DC-103 | daily Auditor rollup snapshot (progress trend, point-in-time evidence) |
 | DC-104 | daily index list and retention check against the Logging Standard |
@@ -53,6 +54,7 @@ On a fresh install, review the macros below before the first scheduled run.
 | DC-35 | pipeline hygiene: latency p95, timestamp errors, truncation |
 | DC-40 | KO usage from `index=_audit` |
 | DC-41/42/43 | detection execution health, silent detections, confidence rollup |
+| DC-45 | daily: measure the normalization and detection gates per dataset (`dc_dataset_gates`) |
 | DC-50 | weekly governance scorecard |
 | DC-60/61 | federated requirement gap register |
 | DC-62 | ATT&CK technique coverage and exposure |
@@ -118,7 +120,10 @@ and Tier 0 should apply to domain controllers only.
 
 ## Contract master
 `lookups/dc_contracts_master.csv` is the contract lookup (`dc_contract_master`). Two separate statuses
-are derived from it by the `dc_contract_state` macro, matching on sourcetype + index:
+are derived from it by the `dc_contract_state` macro. Matching is done once, by `dc_contract_match`:
+this tenant's contract (sourcetype + index) first, otherwise a contract for the same sourcetype held
+by another AE or Core (`contract_scope` = this tenant / another tenant or Core / none). A shared
+contract counts as contracted everywhere in the app, and DC-00f catalogs the dataset.
 - **SIEM status** - `SIEM complete` when the SIEM validation team has finished the contract and
   notified CDE (`notification_sent` is true); the home page reports these.
 - **CDE status** - `CDE approved` when `cde_approval` is true, otherwise `pending CDE`; the
@@ -133,6 +138,35 @@ GitHub pull every 2 hours when that pull returns rows (it never writes an empty 
 the source of truth: hand edits to `dc_contracts_master.csv` are overwritten on the next DC-37 run.
 
 ## Changelog
+### 0.7.3
+- **Shared contracts count.** New `dc_contract_match` macro is the one contract lookup for the app:
+  this tenant's own contract first, otherwise a contract for the same sourcetype held by another AE or
+  Core. `dc_contract_state`, `dc_cim_recon`, DC-00f, DC-03 and DC-38 all use it.
+- **DC-00f** now catalogs shared-contract datasets too, and runs every 2 hours (10 minutes before
+  DC-38) instead of once a day. Notes say "(shared - contract held by <AE or Core>)" when shared.
+  The seed file is still only for fields people maintain.
+- **DC-03** only alerts on data with no contract anywhere; contracted data is cataloged by DC-00f,
+  malformed and rejected sourcetypes are already tracked on Catalog Browse and the Command Center.
+- **CIM Command Center:** "Contract extension needed" is gone. Shared contracts are in the
+  Contract complete stage with `contract` = CONTRACTED - SHARED and a `contract_held_by` column.
+  DC-102 snapshots taken before 0.7.3 still show the old status in Progress over time.
+- **Catalog Browse:** removed the Tenant x Domain coverage table (the Auditor page covers it per AE).
+  The catalog table shows 10 rows per page with a match count, and gains Health and SIEM status
+  filters and a contract column (own / shared). "Uncataloged data that already has a SIEM contract"
+  is replaced by "Cataloged automatically from a SIEM contract - last 30 days". The Tenant and Domain
+  filters reuse the page's catalog search instead of reading the collection again.
+- **Measured gates (DC-45, new, daily 06:30).** Normalization is Complete when the dataset's best
+  CIM score is 50 or more (the Command Center rule). Detection is Covered when an enabled, healthy
+  correlation search reads the dataset directly or through a CIM data model it is normalized into.
+  The `dc_effective_gates` macro keeps the further-along of the measured and person-entered value,
+  so a gate set by a person is never lowered; SOC stays person-entered. `enterprise_ready`, when
+  blank, becomes Yes once all three gates are done. Used by the Auditor rollup, Catalog Browse and
+  Dataset Detail. New KV Store collection `dc_dataset_gates`.
+- **Auditor page:** data-catalog scorecard adds auto-cataloged, shared-contract, measured-gate and
+  enterprise-ready counts; provenance lists DC-45 and the last auto-catalog date; definitions updated.
+- **Dataset Detail:** the record panel shows SIEM contract status, contract scope and the effective
+  gates with their source.
+
 ### 0.7.2
 - **Cataloging is automatic.** A dataset is officially cataloged once it is ingested and the SIEM
   team gives it a contract. New DC-00f (daily, 05:20) adds every contracted, flowing, non-rejected
