@@ -180,9 +180,9 @@
 
   <row>
     <panel>
-      <title>Shadow dataset classification - see DC-38</title>
+      <title>Shadow datasets (observed, not cataloged) by reason - see DC-38</title>
       <chart>
-        <search base="shadow"><query>| search uhgid=$tenant|s$ sourcetype=*$st$* | stats count by classification</query></search>
+        <search base="shadow"><query>| search uhgid=$tenant|s$ sourcetype=*$st$* | eval reason=case(classification IN ("CONTRACT_MATCHED_EXACT","CONTRACT_MATCHED_OTHER_TENANT"),"Contracted - waiting for next auto-catalog run", classification="UNMATCHED_NOVEL","No contract anywhere", classification="MALFORMED_SOURCETYPE","Malformed sourcetype", classification="REJECTED","Rejected sourcetype", 1=1,classification) | stats count by reason</query></search>
         <option name="charting.chart">pie</option>
       </chart>
     </panel>

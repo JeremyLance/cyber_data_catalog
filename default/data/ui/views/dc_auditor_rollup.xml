@@ -170,7 +170,7 @@
       </chart>
     </panel>
     <panel>
-      <title>Progress over time (daily snapshot, DC-103)</title>
+      <title>Progress over time (daily snapshot, DC-103; gate automation counts saved from v0.7.4)</title>
       <chart>
         <search>
           <query><![CDATA[index=summary_datacatalog source="dc_auditor_rollup"

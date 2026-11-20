@@ -138,6 +138,13 @@ GitHub pull every 2 hours when that pull returns rows (it never writes an empty 
 the source of truth: hand edits to `dc_contracts_master.csv` are overwritten on the next DC-37 run.
 
 ## Changelog
+### 0.7.4
+- DC-103 (Auditor daily snapshot) also saves g1/g2/g3, g1_measured, g2_measured, auto_cataloged,
+  shared_contract and siem_done per AE, so a later change in a percentage can be traced to real
+  progress or to measurement/automation. Snapshots before 0.7.4 do not have these fields.
+- Catalog Browse: the shadow pie now groups by plain-language reason; the two contract-matched
+  buckets are one slice, "Contracted - waiting for next auto-catalog run".
+
 ### 0.7.3
 - **Shared contracts count.** New `dc_contract_match` macro is the one contract lookup for the app:
   this tenant's own contract first, otherwise a contract for the same sourcetype held by another AE or
